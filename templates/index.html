@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Bus Route Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .sidebar {
+            width: 400px;
+            background: white;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .school-section {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .school-section h2 {
+            font-size: 16px;
+            color: #856404;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .school-info {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .school-name {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+        
+        .school-address {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 8px;
+        }
+        
+        .school-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .school-actions button {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+        }
+        
+        .remove-school-btn {
+            background: #dc3545;
+        }
+        
+        .remove-school-btn:hover {
+            background: #c82333;
+        }
+        
+        .no-school {
+            color: #856404;
+            font-size: 14px;
+            text-align: center;
+            padding: 10px;
+        }
+        
+        .optimise-section {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .optimise-section h2 {
+            font-size: 16px;
+            color: #155724;
+            margin-bottom: 10px;
+        }
+        
+        .route-result {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .route-summary {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .route-item {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .route-header {
+            font-weight: 600;
+            color: #155724;
+            margin-bottom: 5px;
+        }
+        
+        .route-stats {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        
+        .search-section {
+            margin-bottom: 30px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+            position: relative;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .autocomplete-item {
+            padding: 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s;
+        }
+        
+        .autocomplete-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+        
+        .autocomplete-address {
+            font-weight: 500;
+            color: #2c3e50;
+            margin-bottom: 4px;
+        }
+        
+        .autocomplete-postal {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        
+        .autocomplete-loading {
+            padding: 12px;
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        .autocomplete-empty {
+            padding: 12px;
+            text-align: center;
+            color: #95a5a6;
+            font-size: 14px;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .modal-content h3 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-size: 20px;
+        }
+        
+        input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #2980b9;
+        }
+        
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .students-list {
+            margin-top: 20px;
+        }
+        
+        .students-list h2 {
+            font-size: 18px;
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+        
+        .student-item {
+            background: #f8f9fa;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+        
+        .student-info {
+            display: flex;
+            gap: 15px;
+            align-items: baseline;
+            margin-bottom: 8px;
+        }
+        
+        .student-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .student-address {
+            font-size: 12px;
+            color: #7f8c8d;
+            flex: 1;
+        }
+        
+        .remove-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            width: 100%;
+        }
+        
+        .remove-btn:hover {
+            background: #c0392b;
+        }
+        
+        .stats {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .stat-label {
+            color: #7f8c8d;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        #map {
+            flex: 1;
+            height: 100vh;
+        }
+        
+        .error {
+            background: #e74c3c;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .success {
+            background: #27ae60;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h1>🚌 School Bus Route Planner</h1>
+            
+            <div class="school-section">
+                <h2>🏫 School Location</h2>
+                <button onclick="setDefaultSchool()" style="width: 100%; margin-bottom: 10px; background: #6c757d; font-size: 13px;">
+                    Use ISS International School (Default)
+                </button>
+                <div id="schoolInfo"></div>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-label">Total Students:</span>
+                    <span class="stat-value" id="totalStudents">0</span>
+                </div>
+            </div>
+            
+            <div class="optimise-section">
+                <h2>🚍 Route Optimisation</h2>
+                <div class="input-group">
+                    <label for="maxBuses">Maximum Buses Available</label>
+                    <input type="number" id="maxBuses" value="3" min="1" max="10">
+                </div>
+                <button onclick="optimiseRoutes()" style="background: #27ae60;">
+                    Optimise Routes
+                </button>
+                <div id="optimisationResult"></div>
+            </div>
+            
+            <div class="search-section">
+                <div class="input-group">
+                    <label for="studentName">Student Name</label>
+                    <input type="text" id="studentName" placeholder="Enter student name">
+                </div>
+                
+                <div class="input-group">
+                    <label for="addressSearch">Address / Postal Code</label>
+                    <input type="text" id="addressSearch" placeholder="e.g., 200640 or Rowell Road" autocomplete="off">
+                    <div id="autocompleteDropdown" class="autocomplete-dropdown" style="display: none;"></div>
+                </div>
+                
+                <button id="searchBtn">Search & Add Student</button>
+                
+                <div id="message"></div>
+            </div>
+            
+            <div class="students-list">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2 style="margin: 0;">Students List</h2>
+                    <button onclick="showGenerateModal()" style="width: auto; padding: 8px 16px; font-size: 12px; background: #9b59b6;">
+                        Generate Random
+                    </button>
+                </div>
+                <div id="studentsList"></div>
+            </div>
+            
+            <!-- Generate Modal -->
+            <div id="generateModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>Generate Random Students</h3>
+                    <p style="color: #7f8c8d; font-size: 14px; margin-bottom: 15px;">
+                        Generate students with real Singapore addresses
+                    </p>
+                    <div class="input-group">
+                        <label for="studentCount">Number of Students</label>
+                        <input type="number" id="studentCount" value="10" min="1" max="50">
+                    </div>
+                    <div class="input-group">
+                        <label for="clusterCount">Number of Neighborhoods to Focus</label>
+                        <input type="number" id="clusterCount" value="2" min="1" max="5">
+                        <small style="color: #6c757d; font-size: 11px; display: block; margin-top: 4px;">
+                            1 = All in one area, 5 = Spread across Singapore
+                        </small>
+                    </div>
+                    <div class="input-group">
+                        <label for="isolatedCount">Isolated Students (Anomalies)</label>
+                        <input type="number" id="isolatedCount" value="0" min="0" max="10">
+                        <small style="color: #ff9800; font-size: 11px; display: block; margin-top: 4px;">
+                            ⚠️ Students placed 5km+ away from clusters
+                        </small>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="generateStudents()" style="flex: 1; background: #9b59b6;">Generate</button>
+                        <button onclick="hideGenerateModal()" style="flex: 1; background: #95a5a6;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="map"></div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let markers = {};
+        let schoolMarker = null;
+        let searchTimeout;
+        let selectedAddress = null;
+        let isAddingSchool = false;
+        let routeLines = [];  // Store route polylines
+        let clusterCircles = [];  // Store cluster visualization circles
+        let pickupMarkers = [];  // Store pickup sequence markers
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([1.3521, 103.8198], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+        
+        // Custom school icon
+        const schoolIcon = L.icon({
+            iconUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDQwIDQwIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxOCIgZmlsbD0iI2ZmYzcwNyIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMiLz48dGV4dCB4PSIyMCIgeT0iMjYiIGZvbnQtc2l6ZT0iMjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiPvCfj6s8L3RleHQ+PC9zdmc+',
+            iconSize: [40, 40],
+            iconAnchor: [20, 40],
+            popupAnchor: [0, -40]
+        });
+        
+        // Route colors for different buses
+        const routeColors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
+        
+        // Clear all route lines from map
+        function clearRouteLines() {
+            routeLines.forEach(line => map.removeLayer(line));
+            routeLines = [];
+            pickupMarkers.forEach(marker => map.removeLayer(marker));
+            pickupMarkers = [];
+        }
+        
+        // Clear cluster circles from map
+        function clearClusterCircles() {
+            clusterCircles.forEach(circle => map.removeLayer(circle));
+            clusterCircles = [];
+        }
+        
+        // Draw cluster circles on map
+        function drawClusterCircles(clusters) {
+            console.log('drawClusterCircles called with:', clusters);
+            clearClusterCircles();
+            
+            if (!clusters || clusters.length === 0) {
+                console.log('No clusters to draw');
+                return;
+            }
+            
+            clusters.forEach((cluster, index) => {
+                console.log(`Drawing cluster ${index + 1}:`, cluster);
+                
+                // Create circle for cluster
+                const circle = L.circle(
+                    [cluster.center.lat, cluster.center.lng],
+                    {
+                        radius: cluster.radius,
+                        color: '#ff6b6b',
+                        fillColor: '#ff6b6b',
+                        fillOpacity: 0.2,  // Increased from 0.15 for better visibility
+                        weight: 3,  // Increased from 2 for better visibility
+                        dashArray: '10, 10'  // Larger dashes for better visibility
+                    }
+                ).addTo(map);
+                
+                // Add popup with cluster info
+                circle.bindPopup(`
+                    <b>🔥 Hot Spot ${index + 1}</b><br>
+                    ${cluster.size} students<br>
+                    ${cluster.distance_from_school.toFixed(1)} km from school<br>
+                    Radius: ${(cluster.radius / 1000).toFixed(1)} km
+                `);
+                
+                clusterCircles.push(circle);
+                console.log(`Cluster ${index + 1} circle added to map`);
+            });
+            
+            console.log(`Total ${clusterCircles.length} cluster circles drawn`);
+        }
+        
+        // Draw isolated student markers
+        function drawIsolatedMarkers(isolated) {
+            if (!isolated || isolated.length === 0) return;
+            
+            console.log(`Drawing ${isolated.length} isolated student markers`);
+            
+            isolated.forEach((student) => {
+                // Create warning icon for isolated students
+                const isolatedIcon = L.divIcon({
+                    className: 'isolated-marker',
+                    html: `<div style="
+                        background-color: #ff9800;
+                        color: white;
+                        border: 3px solid #fff;
+                        border-radius: 50%;
+                        width: 32px;
+                        height: 32px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-weight: bold;
+                        font-size: 18px;
+                        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+                    ">⚠️</div>`,
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
+                });
+                
+                const marker = L.marker([student.lat, student.lng], { 
+                    icon: isolatedIcon,
+                    zIndexOffset: 1500
+                }).addTo(map);
+                
+                marker.bindPopup(`
+                    <b>⚠️ Isolated Student</b><br>
+                    ${student.name}<br>
+                    <small>${student.address}</small><br>
+                    <em style="color: #ff9800;">Not in any cluster (>3km from others)</em>
+                `);
+                
+                clusterCircles.push(marker);  // Add to clusterCircles so it gets cleared with them
+            });
+        }
+        
+        // Draw route on map with pickup sequence
+        function drawRoute(segments, color, busNumber) {
+            let pickupNumber = 1;
+            
+            segments.forEach((segment, index) => {
+                let coordinates = [];
+                
+                // Check if geometry is encoded polyline or coordinate array
+                if (Array.isArray(segment.geometry)) {
+                    coordinates = segment.geometry.map(point => [point[0], point[1]]);
+                } else {
+                    // Fallback to straight line
+                    coordinates = [
+                        [segment.from.lat, segment.from.lng],
+                        [segment.to.lat, segment.to.lng]
+                    ];
+                }
+                
+                // Draw polyline
+                const polyline = L.polyline(coordinates, {
+                    color: color,
+                    weight: 4,
+                    opacity: 0.7
+                }).addTo(map);
+                
+                // Add popup with segment info
+                const isReturn = segment.student === 'Return to School';
+                polyline.bindPopup(`
+                    <b>Bus ${busNumber}</b><br>
+                    ${isReturn ? 'Returning to school' : `Pickup #${pickupNumber}: ${segment.student}`}
+                `);
+                
+                routeLines.push(polyline);
+                
+                // Add numbered marker at pickup location (not for return to school)
+                if (!isReturn) {
+                    const pickupIcon = L.divIcon({
+                        className: 'pickup-number-marker',
+                        html: `<div style="
+                            background-color: ${color};
+                            color: white;
+                            border: 2px solid white;
+                            border-radius: 50%;
+                            width: 28px;
+                            height: 28px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-weight: bold;
+                            font-size: 14px;
+                            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                        ">${pickupNumber}</div>`,
+                        iconSize: [28, 28],
+                        iconAnchor: [14, 14]
+                    });
+                    
+                    const pickupMarker = L.marker([segment.to.lat, segment.to.lng], { 
+                        icon: pickupIcon,
+                        zIndexOffset: 2000  // Show above all other markers
+                    }).addTo(map);
+                    
+                    pickupMarker.bindPopup(`
+                        <b>Bus ${busNumber} - Pickup #${pickupNumber}</b><br>
+                        ${segment.student}
+                    `);
+                    
+                    pickupMarkers.push(pickupMarker);
+                    pickupNumber++;
+                }
+            });
+        }
+
+        // Load school location
+        async function loadSchool() {
+            const response = await fetch('/api/school');
+            const school = await response.json();
+            
+            if (school && school.latitude) {
+                // Add school marker
+                if (schoolMarker) {
+                    map.removeLayer(schoolMarker);
+                }
+                
+                schoolMarker = L.marker([school.latitude, school.longitude], { icon: schoolIcon })
+                    .addTo(map)
+                    .bindPopup(`<b>🏫 ${school.name}</b><br>${school.address}`);
+                
+                // Update UI
+                document.getElementById('schoolInfo').innerHTML = `
+                    <div class="school-info">
+                        <div class="school-name">${school.name}</div>
+                        <div class="school-address">${school.address}</div>
+                        <div class="school-actions">
+                            <button onclick="removeSchool()" class="remove-school-btn">Remove</button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('schoolInfo').innerHTML = `
+                    <div class="no-school">No school location set</div>
+                    <button onclick="startAddingSchool()">Set School Location</button>
+                `;
+            }
+        }
+        
+        // Start adding school
+        function startAddingSchool() {
+            isAddingSchool = true;
+            document.getElementById('schoolInfo').innerHTML = `
+                <div class="input-group">
+                    <label for="schoolName">School Name</label>
+                    <input type="text" id="schoolName" placeholder="Enter school name">
+                </div>
+                <div class="input-group">
+                    <label for="schoolAddress">School Address</label>
+                    <input type="text" id="schoolAddress" placeholder="Search address" autocomplete="off">
+                    <div id="schoolAutocomplete" class="autocomplete-dropdown" style="display: none;"></div>
+                </div>
+                <button onclick="saveSchool()">Save School</button>
+                <button onclick="cancelAddingSchool()" style="background: #6c757d; margin-top: 8px;">Cancel</button>
+            `;
+            
+            // Add autocomplete for school address
+            document.getElementById('schoolAddress').addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    searchAddressesForSchool(e.target.value.trim());
+                }, 300);
+            });
+        }
+        
+        async function searchAddressesForSchool(query) {
+            if (query.length < 3) {
+                document.getElementById('schoolAutocomplete').style.display = 'none';
+                return;
+            }
+            
+            const dropdown = document.getElementById('schoolAutocomplete');
+            dropdown.style.display = 'block';
+            dropdown.innerHTML = '<div class="autocomplete-loading">Searching...</div>';
+            
+            try {
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ searchVal: query })
+                });
+                
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    dropdown.innerHTML = data.results.map(result => `
+                        <div class="autocomplete-item" onclick='selectSchoolAddress(${JSON.stringify(result)})'>
+                            <div class="autocomplete-address">${result.ADDRESS}</div>
+                            <div class="autocomplete-postal">Postal: ${result.POSTAL}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    dropdown.innerHTML = '<div class="autocomplete-empty">No addresses found</div>';
+                }
+            } catch (error) {
+                dropdown.innerHTML = '<div class="autocomplete-empty">Error searching addresses</div>';
+            }
+        }
+        
+        function selectSchoolAddress(addressData) {
+            selectedAddress = addressData;
+            document.getElementById('schoolAddress').value = addressData.ADDRESS;
+            document.getElementById('schoolAutocomplete').style.display = 'none';
+        }
+        
+        async function saveSchool() {
+            const name = document.getElementById('schoolName').value.trim();
+            
+            if (!name) {
+                showMessage('Please enter school name', 'error');
+                return;
+            }
+            
+            if (!selectedAddress) {
+                showMessage('Please select a school address', 'error');
+                return;
+            }
+            
+            try {
+                await fetch('/api/school', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        address: selectedAddress.ADDRESS,
+                        postal: selectedAddress.POSTAL,
+                        latitude: selectedAddress.LATITUDE,
+                        longitude: selectedAddress.LONGITUDE
+                    })
+                });
+                
+                selectedAddress = null;
+                isAddingSchool = false;
+                await loadSchool();
+                await fitMapBounds();
+                showMessage('School location saved!', 'success');
+            } catch (error) {
+                showMessage('Failed to save school location', 'error');
+            }
+        }
+        
+        function cancelAddingSchool() {
+            isAddingSchool = false;
+            selectedAddress = null;
+            loadSchool();
+        }
+        
+        async function removeSchool() {
+            if (confirm('Remove school location?')) {
+                await fetch('/api/school', { method: 'DELETE' });
+                if (schoolMarker) {
+                    map.removeLayer(schoolMarker);
+                    schoolMarker = null;
+                }
+                await loadSchool();
+            }
+        }
+        
+        // Set default school (ISS International School)
+        async function setDefaultSchool() {
+            try {
+                // Search for ISS International School at 21 Preston Road
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ searchVal: '21 Preston Road' })
+                });
+                
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    const schoolData = data.results[0];
+                    
+                    // Set as school location
+                    await fetch('/api/school', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: 'ISS International School',
+                            address: schoolData.ADDRESS,
+                            postal: schoolData.POSTAL,
+                            latitude: schoolData.LATITUDE,
+                            longitude: schoolData.LONGITUDE
+                        })
+                    });
+                    
+                    await loadSchool();
+                    await fitMapBounds();
+                    showMessage('ISS International School set as default!', 'success');
+                } else {
+                    showMessage('Could not find ISS International School', 'error');
+                }
+            } catch (error) {
+                showMessage('Failed to set default school', 'error');
+            }
+        }
+        
+        // Load students from backend
+        async function loadStudents() {
+            const response = await fetch('/api/students');
+            const students = await response.json();
+            
+            // Clear existing markers
+            Object.values(markers).forEach(marker => map.removeLayer(marker));
+            markers = {};
+            
+            // Add markers
+            students.forEach(student => {
+                const marker = L.marker([student.latitude, student.longitude])
+                    .addTo(map)
+                    .bindPopup(`<b>${student.name}</b><br>${student.address}`);
+                markers[student.id] = marker;
+            });
+            
+            await fitMapBounds();
+            updateUI(students);
+            
+            // Load and display cluster circles
+            if (students.length > 0) {
+                await loadClusterCircles();
+            }
+        }
+        
+        // Load cluster analysis and display circles
+        async function loadClusterCircles() {
+            try {
+                const response = await fetch('/api/analyze-clusters');
+                const data = await response.json();
+                
+                console.log('Cluster analysis response:', data);
+                
+                if (data.clusters && data.clusters.length > 0) {
+                    console.log('Drawing', data.clusters.length, 'cluster circles');
+                    drawClusterCircles(data.clusters);
+                    
+                    // Draw isolated student markers
+                    if (data.isolated && data.isolated.length > 0) {
+                        drawIsolatedMarkers(data.isolated);
+                    }
+                } else {
+                    console.log('No clusters found or not enough students in close proximity');
+                }
+            } catch (error) {
+                console.error('Error loading cluster analysis:', error);
+            }
+        }
+        
+        // Fit map to show all markers
+        async function fitMapBounds() {
+            const response = await fetch('/api/students');
+            const students = await response.json();
+            const schoolResponse = await fetch('/api/school');
+            const school = await schoolResponse.json();
+            
+            const points = [];
+            
+            if (school && school.latitude) {
+                points.push([school.latitude, school.longitude]);
+            }
+            
+            students.forEach(s => points.push([s.latitude, s.longitude]));
+            
+            if (points.length > 0) {
+                const bounds = L.latLngBounds(points);
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
+
+        // Update UI
+        async function updateUI(students) {
+            const response = await fetch('/api/stats');
+            const stats = await response.json();
+            
+            document.getElementById('totalStudents').textContent = stats.total_students;
+            
+            const listContainer = document.getElementById('studentsList');
+            
+            if (students.length === 0) {
+                listContainer.innerHTML = '<p style="color: #95a5a6; text-align: center;">No students added yet</p>';
+                return;
+            }
+            
+            listContainer.innerHTML = students.map(student => `
+                <div class="student-item">
+                    <div class="student-info">
+                        <div class="student-name">${student.name}</div>
+                        <div class="student-address">${student.address}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removeStudent(${student.id})">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        // Remove student
+        async function removeStudent(id) {
+            await fetch(`/api/students/${id}`, { method: 'DELETE' });
+            await loadStudents();
+        }
+
+        // Show message
+        function showMessage(text, type = 'error') {
+            const messageDiv = document.getElementById('message');
+            messageDiv.className = type;
+            messageDiv.textContent = text;
+            
+            setTimeout(() => {
+                messageDiv.textContent = '';
+                messageDiv.className = '';
+            }, 3000);
+        }
+
+        // Autocomplete search
+        async function searchAddresses(query) {
+            if (query.length < 3) {
+                hideAutocomplete();
+                return;
+            }
+            
+            const dropdown = document.getElementById('autocompleteDropdown');
+            dropdown.style.display = 'block';
+            dropdown.innerHTML = '<div class="autocomplete-loading">Searching...</div>';
+            
+            try {
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ searchVal: query })
+                });
+                
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    dropdown.innerHTML = data.results.map(result => `
+                        <div class="autocomplete-item" data-result='${JSON.stringify(result)}'>
+                            <div class="autocomplete-address">${result.ADDRESS}</div>
+                            <div class="autocomplete-postal">Postal: ${result.POSTAL}</div>
+                        </div>
+                    `).join('');
+                    
+                    // Add click handlers
+                    dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+                        item.addEventListener('click', () => {
+                            const result = JSON.parse(item.getAttribute('data-result'));
+                            selectAddress(result);
+                        });
+                    });
+                } else {
+                    dropdown.innerHTML = '<div class="autocomplete-empty">No addresses found</div>';
+                }
+            } catch (error) {
+                dropdown.innerHTML = '<div class="autocomplete-empty">Error searching addresses</div>';
+            }
+        }
+        
+        function selectAddress(addressData) {
+            selectedAddress = addressData;
+            document.getElementById('addressSearch').value = addressData.ADDRESS;
+            hideAutocomplete();
+        }
+        
+        function hideAutocomplete() {
+            document.getElementById('autocompleteDropdown').style.display = 'none';
+        }
+        
+        // Address input with autocomplete
+        document.getElementById('addressSearch').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            selectedAddress = null;
+            
+            searchTimeout = setTimeout(() => {
+                searchAddresses(e.target.value.trim());
+            }, 300);
+        });
+        
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.input-group')) {
+                hideAutocomplete();
+            }
+        });
+
+        // Search and add student
+        document.getElementById('searchBtn').addEventListener('click', async () => {
+            const name = document.getElementById('studentName').value.trim();
+            
+            if (!name) {
+                showMessage('Please enter student name', 'error');
+                return;
+            }
+            
+            if (!selectedAddress) {
+                showMessage('Please select an address from the dropdown', 'error');
+                return;
+            }
+            
+            const btn = document.getElementById('searchBtn');
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+            
+            try {
+                // Add student
+                await fetch('/api/students', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        address: selectedAddress.ADDRESS,
+                        postal: selectedAddress.POSTAL,
+                        latitude: selectedAddress.LATITUDE,
+                        longitude: selectedAddress.LONGITUDE
+                    })
+                });
+                
+                // Clear inputs
+                document.getElementById('studentName').value = '';
+                document.getElementById('addressSearch').value = '';
+                selectedAddress = null;
+                
+                await loadStudents();
+                showMessage('Student added successfully!', 'success');
+                
+            } catch (error) {
+                showMessage(error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Search & Add Student';
+            }
+        });
+
+        // Enter key support
+        document.getElementById('addressSearch').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && selectedAddress) {
+                document.getElementById('searchBtn').click();
+            }
+        });
+
+        // Generate random students
+        function showGenerateModal() {
+            document.getElementById('generateModal').style.display = 'flex';
+        }
+        
+        function hideGenerateModal() {
+            document.getElementById('generateModal').style.display = 'none';
+        }
+        
+        async function generateStudents() {
+            const count = parseInt(document.getElementById('studentCount').value);
+            const clusters = parseInt(document.getElementById('clusterCount').value);
+            const isolated = parseInt(document.getElementById('isolatedCount').value);
+            
+            if (count < 1 || count > 50) {
+                showMessage('Please enter a number between 1 and 50', 'error');
+                return;
+            }
+            
+            if (clusters < 1 || clusters > 5) {
+                showMessage('Please enter clusters between 1 and 5', 'error');
+                return;
+            }
+            
+            if (isolated < 0 || isolated > 10) {
+                showMessage('Please enter isolated students between 0 and 10', 'error');
+                return;
+            }
+            
+            hideGenerateModal();
+            const totalMsg = isolated > 0 ? `${count} students (${isolated} isolated)` : `${count} students`;
+            showMessage(`Generating ${totalMsg} in ${clusters} neighborhood(s)... This may take a moment`, 'success');
+            
+            try {
+                const response = await fetch('/api/generate-students', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ count: count, clusters: clusters, isolated: isolated })
+                });
+                
+                const result = await response.json();
+                
+                await loadStudents();
+                const isolatedMsg = result.isolated_generated > 0 ? ` (${result.isolated_generated} isolated)` : '';
+                showMessage(`Generated ${result.generated} students${isolatedMsg} in ${result.neighborhoods_used} neighborhood(s)!`, 'success');
+                
+            } catch (error) {
+                showMessage('Failed to generate students', 'error');
+            }
+        }
+        
+        // Toggle pickup list visibility
+        function togglePickupList(busId) {
+            const list = document.getElementById(busId);
+            const btn = document.getElementById(`btn-${busId}`);
+            
+            if (list.style.display === 'none') {
+                list.style.display = 'block';
+                btn.textContent = 'Hide Pickup Order ▲';
+                btn.style.background = '#5a6268';
+            } else {
+                list.style.display = 'none';
+                btn.textContent = 'Show Pickup Order ▼';
+                btn.style.background = '#6c757d';
+            }
+        }
+        
+        // Optimise routes
+        async function optimiseRoutes() {
+            const maxBuses = parseInt(document.getElementById('maxBuses').value);
+            
+            if (maxBuses < 1 || maxBuses > 10) {
+                showMessage('Please enter a number between 1 and 10', 'error');
+                return;
+            }
+            
+            // Clear existing route lines (but keep cluster circles visible)
+            clearRouteLines();
+            
+            const resultDiv = document.getElementById('optimisationResult');
+            resultDiv.innerHTML = '<div style="padding: 10px; text-align: center; color: #155724;">Analysing clusters and optimising routes...</div>';
+            
+            try {
+                const response = await fetch('/api/optimise-routes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ max_buses: maxBuses })
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    resultDiv.innerHTML = `<div style="padding: 10px; color: #721c24; background: #f8d7da; border-radius: 4px;">${result.error}</div>`;
+                    return;
+                }
+                
+                // Clear old circles and draw new ones from optimization result
+                clearClusterCircles();
+                
+                // Draw cluster circles FIRST (so they appear behind routes)
+                if (result.cluster_visualization && result.cluster_visualization.clusters) {
+                    drawClusterCircles(result.cluster_visualization.clusters);
+                    
+                    // Draw isolated student markers
+                    if (result.cluster_visualization.isolated && result.cluster_visualization.isolated.length > 0) {
+                        drawIsolatedMarkers(result.cluster_visualization.isolated);
+                    }
+                }
+                
+                // Draw routes on map
+                result.routes.forEach((route, index) => {
+                    const color = routeColors[index % routeColors.length];
+                    drawRoute(route.segments, color, index + 1);
+                });
+                
+                // Display results
+                let html = '<div class="route-result">';
+                html += '<div class="route-summary">';
+                html += `<strong>🚍 Buses Used: ${result.total_buses}</strong><br>`;
+                html += `⏱️ Longest Route: ${result.max_route_time_minutes} minutes<br>`;
+                html += `📏 Total Distance: ${result.total_distance_km} km<br>`;
+                if (result.optimization_note) {
+                    html += `<em style="color: #28a745;">${result.optimization_note}</em>`;
+                }
+                html += '</div>';
+                
+                result.routes.forEach((route, index) => {
+                    const color = routeColors[index % routeColors.length];
+                    const busId = `bus-${index}`;
+                    
+                    html += '<div class="route-item">';
+                    html += `<div class="route-header" style="display: flex; align-items: center; gap: 8px;">`;
+                    html += `<span style="display: inline-block; width: 20px; height: 4px; background: ${color};"></span>`;
+                    html += `Bus ${index + 1}</div>`;
+                    html += `<div class="route-stats">`;
+                    html += `${route.student_count} students | `;
+                    html += `${route.time_minutes} min | `;
+                    html += `${route.distance_km} km`;
+                    html += `</div>`;
+                    
+                    // Add "Show More" button
+                    html += `<button onclick="togglePickupList('${busId}')" id="btn-${busId}" style="
+                        width: 100%;
+                        margin-top: 8px;
+                        padding: 6px;
+                        background: #6c757d;
+                        color: white;
+                        border: none;
+                        border-radius: 3px;
+                        cursor: pointer;
+                        font-size: 12px;
+                    ">Show Pickup Order ▼</button>`;
+                    
+                    // Add collapsible pickup sequence list (hidden by default)
+                    html += `<div id="${busId}" style="display: none; margin-top: 8px; font-size: 12px; color: #6c757d; max-height: 200px; overflow-y: auto;">`;
+                    html += `<strong>Pickup Order:</strong><br>`;
+                    route.segments.forEach((seg, segIdx) => {
+                        if (seg.student !== 'Return to School') {
+                            html += `<div style="padding: 4px 0; border-bottom: 1px solid #e9ecef;">`;
+                            html += `<span style="display: inline-block; width: 25px; font-weight: bold; color: ${color};">${segIdx + 1}.</span>`;
+                            html += `${seg.student}`;
+                            html += `</div>`;
+                        }
+                    });
+                    html += `</div>`;
+                    
+                    html += '</div>';
+                });
+                
+                html += '</div>';
+                resultDiv.innerHTML = html;
+                
+                showMessage('Routes optimised and hot spots visualised!', 'success');
+                
+            } catch (error) {
+                resultDiv.innerHTML = '<div style="padding: 10px; color: #721c24;">Failed to optimise routes</div>';
+                showMessage('Failed to optimise routes', 'error');
+            }
+        }
+
+        // Close modal on outside click
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('generateModal');
+            if (e.target === modal) {
+                hideGenerateModal();
+            }
+        });
+
+        // Initialize
+        initMap();
+        loadSchool();
+        loadStudents();
+    </script>
+</body>
+</html>
