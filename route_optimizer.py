@@ -10,6 +10,28 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import numpy as np
 from sklearn.cluster import DBSCAN
+import time
+
+# Global cache for distance/route data to avoid repeated API calls
+distance_cache = {}
+route_geometry_cache = {}
+
+
+def get_cache_stats() -> Dict:
+    """Get statistics about the cache"""
+    return {
+        'distance_cache_size': len(distance_cache),
+        'route_geometry_cache_size': len(route_geometry_cache),
+        'total_cached_items': len(distance_cache) + len(route_geometry_cache)
+    }
+
+
+def clear_cache():
+    """Clear all caches"""
+    global distance_cache, route_geometry_cache
+    distance_cache.clear()
+    route_geometry_cache.clear()
+    print("✓ Cache cleared")
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -37,38 +59,84 @@ def estimate_travel_time(distance_km: float) -> float:
     return time_hours * 3600  # convert to seconds
 
 
-def get_route_from_onemap(start_lat: float, start_lng: float, end_lat: float, end_lng: float, api_key: str) -> Tuple[float, float, List]:
-    """Get actual route distance, time, and geometry from OneMap routing API"""
-    try:
-        url = "https://www.onemap.gov.sg/api/public/routingsvc/route"
-        params = {
-            'start': f"{start_lat},{start_lng}",
-            'end': f"{end_lat},{end_lng}",
-            'routeType': 'drive'
-        }
-        headers = {'Authorization': api_key}
+def get_route_from_onemap(start_lat: float, start_lng: float, end_lat: float, end_lng: float, api_key: str, max_retries: int = 3) -> Tuple[float, float, List]:
+    """
+    Get actual route distance, time, and geometry from OneMap routing API
+    Includes caching and retry logic with exponential backoff
+    """
+    # Create cache key (round to 4 decimal places for ~11m precision)
+    cache_key = f"{start_lat:.4f},{start_lng:.4f}->{end_lat:.4f},{end_lng:.4f}"
+    
+    # Check cache first
+    if cache_key in distance_cache:
+        print(f"  ✓ Cache hit: {cache_key}")
+        return distance_cache[cache_key]
+    
+    # Try API with retry logic
+    for attempt in range(max_retries):
+        try:
+            url = "https://www.onemap.gov.sg/api/public/routingsvc/route"
+            params = {
+                'start': f"{start_lat},{start_lng}",
+                'end': f"{end_lat},{end_lng}",
+                'routeType': 'drive'
+            }
+            headers = {'Authorization': api_key}
+            
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 0 and 'route_summary' in data:
+                    # Distance in meters, time in seconds
+                    distance_m = data['route_summary']['total_distance']
+                    time_s = data['route_summary']['total_time']
+                    
+                    # Decode route geometry
+                    geometry = decode_polyline(data['route_geometry'])
+                    
+                    result = (distance_m / 1000, time_s, geometry)
+                    
+                    # Cache the result
+                    distance_cache[cache_key] = result
+                    print(f"  ✓ API success: {cache_key}")
+                    
+                    return result
+            
+            # If we get here, API returned non-200 or invalid data
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                print(f"  ⚠ API returned status {response.status_code}, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+            
+        except requests.exceptions.Timeout:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                print(f"  ⚠ API timeout, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+            else:
+                print(f"  ✗ API timeout after {max_retries} attempts")
         
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('status') == 0 and 'route_summary' in data:
-                # Distance in meters, time in seconds
-                distance_m = data['route_summary']['total_distance']
-                time_s = data['route_summary']['total_time']
-                
-                # Decode route geometry
-                geometry = decode_polyline(data['route_geometry'])
-                
-                return distance_m / 1000, time_s, geometry
-    except Exception as e:
-        print(f"OneMap API error: {e}")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                print(f"  ⚠ API error: {e}, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+            else:
+                print(f"  ✗ API error after {max_retries} attempts: {e}")
     
     # Fallback to haversine estimation with straight line
+    print(f"  → Falling back to Haversine for {cache_key}")
     distance = haversine_distance(start_lat, start_lng, end_lat, end_lng)
-    time = estimate_travel_time(distance)
+    time_est = estimate_travel_time(distance)
     geometry = [[start_lat, start_lng], [end_lat, end_lng]]
-    return distance, time, geometry
+    
+    result = (distance, time_est, geometry)
+    
+    # Cache the fallback result too
+    distance_cache[cache_key] = result
+    
+    return result
 
 
 def decode_polyline(encoded: str) -> List[List[float]]:

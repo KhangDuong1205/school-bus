@@ -5,6 +5,7 @@ import math
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import os
 
 app = Flask(__name__)
 
@@ -17,7 +18,15 @@ class RouteSegment:
     distance: float
     duration: float  # in seconds
 
-API_KEY = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMTA3MywiZm9yZXZlciI6ZmFsc2UsImlzcyI6Ik9uZU1hcCIsImlhdCI6MTc2OTU5NzEzNSwibmJmIjoxNzY5NTk3MTM1LCJleHAiOjE3Njk4NTYzMzUsImp0aSI6IjBlNTI4YTY3LTJmOWMtNDZlNy04NzYyLTE1ZDllNGY4NjNlMSJ9.1w10JcYcvifND4R5aM7Aglq6sY1sgyNyOrb7xLBlfIZsD3kU3AZmDKmL9kxTvZceiZHwohZJHbrQOslVYbYJQFZ_1l40XcRJi58Ko9yDd7uPFojdX7AgSbTln12etii91pObauwJyYGdHBPI_wrQ5D2pyzpMxnOpQ0G73u8iiGxdTTr5Gxs8oUp0OGSEL63pjP6icdW6EaQEKgm3eV2ylPTp1Yx47Pz9bTS_xSRSFM6lzQKRVW7cnBKqUObaB8gl2Hydypy6EkBKpBkoHGRIureX5kMmlCpbizSnU_FTi3OAFRiQ2nfjOKYRUSHxKy0e6lB3rWfpL7fkNYL90b0o9A'
+# Get API key from environment variable (secure)
+API_KEY = os.environ.get('ONEMAP_API_KEY')
+
+if not API_KEY:
+    raise ValueError(
+        "ONEMAP_API_KEY environment variable not set!\n"
+        "Please create a .env file with your API key or set the environment variable.\n"
+        "Get your API key from: https://www.onemap.gov.sg/apidocs/"
+    )
 
 # In-memory storage (will use database later)
 students = []
@@ -449,6 +458,22 @@ def generate_students():
         'neighborhoods_used': len(neighborhoods_used),
         'neighborhoods': neighborhoods_used
     })
+
+
+@app.route('/api/cache/stats', methods=['GET'])
+def get_cache_stats_endpoint():
+    """Get cache statistics"""
+    from route_optimizer import get_cache_stats
+    stats = get_cache_stats()
+    return jsonify(stats)
+
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache_endpoint():
+    """Clear the distance cache"""
+    from route_optimizer import clear_cache
+    clear_cache()
+    return jsonify({'success': True, 'message': 'Cache cleared successfully'})
 
 if __name__ == '__main__':
     import os
