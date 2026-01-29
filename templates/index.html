@@ -954,10 +954,10 @@
                 return;
             }
             
-            listContainer.innerHTML = students.map(student => `
+            listContainer.innerHTML = students.map((student, index) => `
                 <div class="student-item">
                     <div class="student-info">
-                        <div class="student-name">${student.name}</div>
+                        <div class="student-name">${index + 1}. ${student.name}</div>
                         <div class="student-address">${student.address}</div>
                     </div>
                     <button class="remove-btn" onclick="removeStudent(${student.id})">Remove</button>
