@@ -197,9 +197,20 @@ def optimise_routes_endpoint():
     
     data = request.json
     max_buses = data.get('max_buses', 3)
+    school_time = data.get('school_time', '07:30')  # Default 7:30 AM
+    max_ride_time = data.get('max_ride_time', 60)  # Default 60 minutes
+    
+    # Convert school_time (HH:MM) to seconds from midnight
+    try:
+        hours, minutes = map(int, school_time.split(':'))
+        school_arrival_seconds = hours * 3600 + minutes * 60
+    except:
+        school_arrival_seconds = 27000  # Default 7:30 AM
     
     print(f"\n=== Optimise Routes Request ===")
     print(f"Max buses: {max_buses}")
+    print(f"School time: {school_time} ({school_arrival_seconds}s)")
+    print(f"Max ride time: {max_ride_time} min")
     print(f"School location: {school_location is not None}")
     print(f"Number of students: {len(students)}")
     
@@ -211,7 +222,8 @@ def optimise_routes_endpoint():
         print("ERROR: No students added")
         return jsonify({'error': 'Please add students first'}), 400
     
-    result = optimize_routes(school_location, students, max_buses, API_KEY)
+    result = optimize_routes(school_location, students, max_buses, API_KEY, 
+                            school_arrival_seconds, max_ride_time)
     
     return jsonify(result)
 
