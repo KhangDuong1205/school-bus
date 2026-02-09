@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}School Bus Route Planner{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --sidebar-width: 240px;
+            --sidebar-bg: #1a1a2e;
+            --sidebar-hover: #16213e;
+            --accent-color: #00d9ff;
+            --text-color: #e2e8f0;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f1f5f9;
+            color: #334155;
+            overflow: hidden;
+            /* Prevent body scroll, handle in main */
+        }
+
+        .app-layout {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* === MAIN SIDEBAR === */
+        .app-sidebar {
+            width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #0f172a;
+            flex-shrink: 0;
+            z-index: 2000;
+            /* Highest level */
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .app-logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 0;
+            overflow-y: auto;
+        }
+
+        .nav-category {
+            padding: 0 24px;
+            margin-top: 24px;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 24px;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .nav-item:hover {
+            background: var(--sidebar-hover);
+            color: #fff;
+        }
+
+        .nav-item.active {
+            background: rgba(0, 217, 255, 0.1);
+            color: var(--accent-color);
+            border-right: 3px solid var(--accent-color);
+        }
+
+        .nav-icon {
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        /* === MAIN CONTENT AREA === */
+        .app-main {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            /* Scroll handled by children */
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Utility classes */
+        .dark-theme-content {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- FIXED SIDEBAR -->
+        <aside class="app-sidebar">
+            <div class="sidebar-header">
+                <a href="/" class="app-logo">
+                    <i class="fas fa-route"></i>
+                    <span>Optimise Routes</span>
+                </a>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-category">Main</div>
+                <a href="/" class="nav-item {% if active_page == 'planning' %}active{% endif %}">
+                    <span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span>
+                    <span>Route Planning</span>
+                </a>
+
+                <div class="nav-category">Fleet Management</div>
+                <a href="/vehicle-types" class="nav-item {% if active_page == 'vehicle_types' %}active{% endif %}">
+                    <span class="nav-icon"><i class="fas fa-shuttle-van"></i></span>
+                    <span>Vehicle Types</span>
+                </a>
+                <a href="/vehicles" class="nav-item {% if active_page == 'vehicles' %}active{% endif %}">
+                    <span class="nav-icon"><i class="fas fa-bus"></i></span>
+                    <span>Vehicles (Fleet)</span>
+                </a>
+
+                <div class="nav-category">Settings</div>
+                <!-- Future link -->
+                <a href="#" class="nav-item" style="opacity: 0.5; cursor: not-allowed;">
+                    <span class="nav-icon"><i class="fas fa-cog"></i></span>
+                    <span>Settings</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                v1.0.0 Alpha
+            </div>
+        </aside>
+
+        <!-- DYNAMIC CONTENT -->
+        <main class="app-main {% block main_class %}{% endblock %}">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

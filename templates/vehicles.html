@@ -1,0 +1,438 @@
+{% extends "base.html" %}
+
+{% block title %}Vehicles List - School Bus Route Planner{% endblock %}
+{% block active_page %}vehicles{% endblock %}
+
+{% block head %}
+<style>
+    /* CONTENT HEADER */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding: 30px 40px 0;
+    }
+
+    .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .page-desc {
+        color: #64748b;
+        margin-top: 5px;
+        font-size: 0.9rem;
+    }
+
+    /* CONTENT BODY */
+    .content-body {
+        padding: 20px 40px;
+        overflow-y: auto;
+    }
+
+    /* TABLE STYLES */
+    .data-table {
+        width: 100%;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e2e8f0;
+    }
+
+    .data-table th {
+        background: #f8fafc;
+        padding: 16px 24px;
+        text-align: left;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .data-table td {
+        padding: 16px 24px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        font-size: 0.9rem;
+    }
+
+    .data-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .data-table tr:hover {
+        background: #f8fafc;
+    }
+
+    /* COMPONENTS */
+    .status-badge {
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .status-active {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .status-maintenance {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .btn-primary {
+        background: #0ea5e9;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+    }
+
+    .btn-primary:hover {
+        background: #0284c7;
+    }
+
+    .actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+
+    .btn-icon {
+        width: 32px;
+        height: 32px;
+        border: 1px solid #e2e8f0;
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        transition: all 0.2s;
+    }
+
+    .btn-icon:hover {
+        background: #f1f5f9;
+        color: #334155;
+    }
+
+    .btn-icon.delete:hover {
+        background: #fef2f2;
+        color: #ef4444;
+        border-color: #fca5a5;
+    }
+
+    /* MODAL */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.6);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 3000;
+        backdrop-filter: blur(2px);
+    }
+
+    .modal-overlay.show {
+        display: flex;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 450px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .modal-body {
+        padding: 24px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #475569;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        color: #1e293b;
+        font-size: 0.95rem;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #0ea5e9;
+        ring: 2px solid #e0f2fe;
+    }
+
+    .modal-footer {
+        padding: 16px 24px;
+        background: #f8fafc;
+        border-top: 1px solid #e2e8f0;
+        border-radius: 0 0 12px 12px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .btn-secondary {
+        background: white;
+        border: 1px solid #cbd5e1;
+        color: #475569;
+        padding: 9px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+
+    .btn-secondary:hover {
+        background: #f1f5f9;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Fleet / Vehicles</h1>
+        <p class="page-desc">Manage individual vehicles, assign drivers, and track active status.</p>
+    </div>
+    <button class="btn-primary" onclick="openModal()">
+        <i class="fas fa-plus"></i> Add Vehicle
+    </button>
+</div>
+
+<div class="content-body">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Plate Number</th>
+                <th>Nickname</th>
+                <th>Vehicle Type</th>
+                <th>Driver</th>
+                <th>Status</th>
+                <th style="text-align: right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody id="vehiclesBody">
+            <tr>
+                <td colspan="6" style="text-align:center; padding: 40px; color: #94a3b8;">Loading...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">Add Vehicle</div>
+            <button onclick="closeModal()" style="border:none; bg:none; cursor:pointer; color:#94a3b8;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="vehicleId">
+            <div class="form-group">
+                <label>Plate Number</label>
+                <input type="text" id="plateNumber" class="form-control" placeholder="e.g. SG1234X">
+            </div>
+            <div class="form-group">
+                <label>Nickname (Optional)</label>
+                <input type="text" id="nickname" class="form-control" placeholder="Original Blue Bus">
+            </div>
+            <div class="form-group">
+                <label>Vehicle Type</label>
+                <select id="typeId" class="form-control">
+                    <option value="">Loading types...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Driver Name</label>
+                <input type="text" id="driverName" class="form-control" placeholder="Driver Name">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="status" class="form-control">
+                    <option value="active">Active</option>
+                    <option value="maintenance">Maintenance</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn-primary" onclick="saveVehicle()">Save Changes</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let editingId = null;
+    let vehicleTypes = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadVehicleTypes();
+        loadVehicles();
+    });
+
+    async function loadVehicleTypes() {
+        try {
+            const res = await fetch('/api/vehicle-types');
+            vehicleTypes = await res.json();
+
+            const select = document.getElementById('typeId');
+            if (vehicleTypes.length === 0) {
+                select.innerHTML = '<option value="">No types defined yet</option>';
+            } else {
+                select.innerHTML = '<option value="">-- Select Type --</option>' +
+                    vehicleTypes.map(t => `<option value="${t.id}">${t.name} (${t.capacity} pax)</option>`).join('');
+            }
+        } catch (err) { console.error(err); }
+    }
+
+    async function loadVehicles() {
+        try {
+            const res = await fetch('/api/vehicles');
+            const vehicles = await res.json();
+            renderVehicles(vehicles);
+        } catch (err) { console.error(err); }
+    }
+
+    function renderVehicles(vehicles) {
+        const tbody = document.getElementById('vehiclesBody');
+        if (vehicles.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;">No vehicles found.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = vehicles.map(v => `
+            <tr>
+                <td>
+                    <div style="font-weight:600; color:#334155;">${escapeHtml(v.plate_number)}</div>
+                </td>
+                <td>${escapeHtml(v.nickname || '-')}</td>
+                <td>
+                    <span style="background:#eff6ff; color:#1d4ed8; padding:2px 6px; border-radius:4px; font-size:0.8rem;">
+                        ${escapeHtml(v.type_name || 'Unknown Type')}
+                    </span>
+                </td>
+                <td>${escapeHtml(v.driver_name || '-')}</td>
+                <td>
+                    <span class="status-badge ${v.status === 'active' ? 'status-active' : 'status-maintenance'}">
+                        ${v.status === 'active' ? '<i class="fas fa-check-circle"></i> Active' : '<i class="fas fa-tools"></i> Maintenance'}
+                    </span>
+                </td>
+                <td>
+                    <div class="actions">
+                        <button class="btn-icon" onclick="editVehicle(${v.id})"><i class="fas fa-pencil-alt"></i></button>
+                        <button class="btn-icon delete" onclick="deleteVehicle(${v.id})"><i class="fas fa-trash"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.innerText = text;
+        return div.innerHTML;
+    }
+
+    // Modal Helpers
+    function openModal(vehicle = null) {
+        editingId = vehicle ? vehicle.id : null;
+        document.getElementById('modalTitle').innerText = vehicle ? 'Edit Vehicle' : 'New Vehicle';
+        document.getElementById('vehicleId').value = vehicle ? vehicle.id : '';
+        document.getElementById('plateNumber').value = vehicle ? vehicle.plate_number : '';
+        document.getElementById('nickname').value = vehicle ? vehicle.nickname : '';
+        document.getElementById('typeId').value = vehicle ? vehicle.type_id || '' : '';
+        document.getElementById('driverName').value = vehicle ? vehicle.driver_name : '';
+        document.getElementById('status').value = vehicle ? vehicle.status : 'active';
+        document.getElementById('modalOverlay').classList.add('show');
+    }
+
+    function closeModal() {
+        document.getElementById('modalOverlay').classList.remove('show');
+    }
+
+    async function editVehicle(id) {
+        const res = await fetch('/api/vehicles');
+        const vehicles = await res.json();
+        const vehicle = vehicles.find(v => v.id === id);
+        if (vehicle) openModal(vehicle);
+    }
+
+    async function saveVehicle() {
+        const data = {
+            plate_number: document.getElementById('plateNumber').value,
+            nickname: document.getElementById('nickname').value,
+            type_id: document.getElementById('typeId').value,
+            driver_name: document.getElementById('driverName').value,
+            status: document.getElementById('status').value
+        };
+
+        const url = editingId ? `/api/vehicles/${editingId}` : '/api/vehicles';
+        const method = editingId ? 'PUT' : 'POST';
+
+        await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        closeModal();
+        loadVehicles();
+    }
+
+    async function deleteVehicle(id) {
+        if (!confirm('Delete this vehicle?')) return;
+        await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+        loadVehicles();
+    }
+</script>
+{% endblock %}
