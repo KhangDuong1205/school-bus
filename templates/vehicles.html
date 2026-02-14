@@ -353,6 +353,7 @@
             <tr>
                 <td>
                     <div style="font-weight:600; color:#334155;">${escapeHtml(v.plate_number)}</div>
+                    <div style="font-size:0.75rem; color:#94a3b8;">${escapeHtml(v.id)}</div>
                 </td>
                 <td>${escapeHtml(v.nickname || '-')}</td>
                 <td>
@@ -368,8 +369,8 @@
                 </td>
                 <td>
                     <div class="actions">
-                        <button class="btn-icon" onclick="editVehicle(${v.id})"><i class="fas fa-pencil-alt"></i></button>
-                        <button class="btn-icon delete" onclick="deleteVehicle(${v.id})"><i class="fas fa-trash"></i></button>
+                        <button class="btn-icon" onclick="editVehicle('${v.id}')"><i class="fas fa-pencil-alt"></i></button>
+                        <button class="btn-icon delete" onclick="deleteVehicle('${v.id}')"><i class="fas fa-trash"></i></button>
                     </div>
                 </td>
             </tr>

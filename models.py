@@ -48,7 +48,8 @@ class VehicleType(db.Model):
     __tablename__ = 'vehicle_type'
     
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)          # "19-Seater Van"
+    name = db.Column(db.String(50), nullable=False)          # "19-Seater Minibus"
+    code = db.Column(db.String(4), nullable=False)           # "MB", "SB", "VN", "CH"
     routing_profile = db.Column(db.String(30), default='van')  # "van", "allbus"
     capacity = db.Column(db.Integer, nullable=False)          # 19
     label = db.Column(db.String(30))                          # Display label/icon
@@ -59,6 +60,7 @@ class VehicleType(db.Model):
         return {
             'id': self.id,
             'name': self.name,
+            'code': self.code,
             'routing_profile': self.routing_profile,
             'capacity': self.capacity,
             'label': self.label,
@@ -70,11 +72,13 @@ class Vehicle(db.Model):
     """Individual buses in the fleet"""
     __tablename__ = 'vehicle'
     
-    id = db.Column(db.Integer, primary_key=True)
+    # Use UUID string for unique IDs (format: VEH-XXXXXXXX)
+    id = db.Column(db.String(16), primary_key=True)
     plate_number = db.Column(db.String(20), unique=True)      # "SG1234X"
     nickname = db.Column(db.String(50))                        # "Blue Bus"
     driver_name = db.Column(db.String(100))
     status = db.Column(db.String(20), default='active')        # active/maintenance
+    capacity = db.Column(db.Integer)                           # Capacity (overrides VehicleType if set)
     
     type_id = db.Column(db.Integer, db.ForeignKey('vehicle_type.id'))
     
@@ -87,5 +91,5 @@ class Vehicle(db.Model):
             'status': self.status,
             'type_id': self.type_id,
             'type_name': self.vehicle_type.name if self.vehicle_type else None,
-            'capacity': self.vehicle_type.capacity if self.vehicle_type else None
+            'capacity': self.capacity if self.capacity is not None else (self.vehicle_type.capacity if self.vehicle_type else 40)
         }

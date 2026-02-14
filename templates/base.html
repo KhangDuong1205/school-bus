@@ -9,6 +9,7 @@
     <style>
         :root {
             --sidebar-width: 240px;
+            --sidebar-collapsed-width: 64px;
             --sidebar-bg: #1a1a2e;
             --sidebar-hover: #16213e;
             --accent-color: #00d9ff;
@@ -46,12 +47,31 @@
             border-right: 1px solid #0f172a;
             flex-shrink: 0;
             z-index: 2000;
-            /* Highest level */
+            transition: width 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            /* Hide overflowing text during transition */
         }
 
+        .app-sidebar.collapsed {
+            width: var(--sidebar-collapsed-width);
+        }
+
+        /* Header / Logo */
         .sidebar-header {
-            padding: 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            white-space: nowrap;
+            transition: padding 0.3s ease;
+        }
+
+        .app-sidebar.collapsed .sidebar-header {
+            padding: 0;
+            justify-content: center;
         }
 
         .app-logo {
@@ -60,18 +80,62 @@
             color: var(--accent-color);
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             text-decoration: none;
+            transition: opacity 0.2s, width 0.2s;
+            overflow: hidden;
         }
 
+        .app-sidebar.collapsed .app-logo {
+            display: none;
+            /* Hide logo completely when collapsed to show only toggle */
+        }
+
+        /* Toggle Button */
+        .header-toggle-btn {
+            margin-left: auto;
+            /* Push to right when open */
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 1.2rem;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .header-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .app-sidebar.collapsed .header-toggle-btn {
+            margin-left: 0;
+            width: 100%;
+            /* Fill width or remain centered */
+            border-radius: 0;
+        }
+
+        .app-sidebar.collapsed .header-toggle-btn:hover {
+            background: var(--sidebar-hover);
+        }
+
+        /* Sidebar Navigation */
         .sidebar-nav {
             flex: 1;
             padding: 16px 0;
             overflow-y: auto;
+            overflow-x: hidden;
         }
 
         .nav-category {
-            padding: 0 24px;
+            padding: 0 20px;
             margin-top: 24px;
             margin-bottom: 8px;
             font-size: 0.75rem;
@@ -79,17 +143,28 @@
             letter-spacing: 0.05em;
             color: var(--text-muted);
             font-weight: 600;
+            white-space: nowrap;
+            transition: opacity 0.2s;
+        }
+
+        .app-sidebar.collapsed .nav-category {
+            opacity: 0;
+            visibility: hidden;
+            height: 0;
+            margin: 0;
+            padding: 0;
         }
 
         .nav-item {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 12px 24px;
+            height: 48px;
+            padding: 0 20px;
             color: var(--text-muted);
             text-decoration: none;
             transition: all 0.2s ease;
-            position: relative;
+            white-space: nowrap;
+            overflow: hidden;
         }
 
         .nav-item:hover {
@@ -104,17 +179,44 @@
         }
 
         .nav-icon {
-            width: 20px;
+            min-width: 24px;
+            /* Fixed width for icon */
             text-align: center;
             font-size: 1.1rem;
+            margin-right: 12px;
+            display: flex;
+            justify-content: center;
         }
 
+        .app-sidebar.collapsed .nav-item {
+            justify-content: center;
+            /* Center items */
+            padding: 0;
+        }
+
+        .app-sidebar.collapsed .nav-icon {
+            margin-right: 0;
+        }
+
+        .app-sidebar.collapsed .nav-item span:last-child {
+            opacity: 0;
+            width: 0;
+            display: none;
+        }
+
+        /* Footer */
         .sidebar-footer {
             padding: 16px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             font-size: 0.8rem;
             color: var(--text-muted);
             text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .app-sidebar.collapsed .sidebar-footer {
+            display: none;
         }
 
         /* === MAIN CONTENT AREA === */
@@ -140,12 +242,15 @@
 <body>
     <div class="app-layout">
         <!-- FIXED SIDEBAR -->
-        <aside class="app-sidebar">
+        <aside class="app-sidebar" id="appSidebar">
             <div class="sidebar-header">
                 <a href="/" class="app-logo">
-                    <i class="fas fa-route"></i>
-                    <span>Optimise Routes</span>
+                    <span class="nav-icon"><i class="fas fa-route"></i></span>
+                    <span>Optimise</span>
                 </a>
+                <button class="header-toggle-btn" onclick="toggleAppSidebar()">
+                    <i class="fas fa-bars"></i>
+                </button>
             </div>
 
             <nav class="sidebar-nav">
@@ -184,6 +289,12 @@
         </main>
     </div>
 
+    <script>
+        function toggleAppSidebar() {
+            const sidebar = document.getElementById('appSidebar');
+            sidebar.classList.toggle('collapsed');
+        }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 

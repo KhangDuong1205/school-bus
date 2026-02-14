@@ -3,6 +3,7 @@ import requests
 from typing import List, Dict, Tuple
 import math
 import csv
+import io
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import os
@@ -70,14 +71,20 @@ def load_students_from_csv():
             reader = csv.DictReader(f)
             for idx, row in enumerate(reader, start=1):
                 # Extract student data from CSV columns
-                name = row.get('ID', f'Student {idx}')  # 'ID' column contains the name
+                # User Requirement: Capture student_id and remark
+                student_id = row.get('student_id', row.get('ID', str(idx)))
+                name = row.get('ID', f'Student {idx}')  # Keep existing logic for name for now
+                
                 address = row.get('Pick-up address line 1', '')
                 address_2 = row.get('Pick-up address line 2', '')
                 if address_2 and address_2 != 'Null':
                     address = f"{address}, {address_2}"
                 
-                latitude = row.get('Pick-up latitude', '')
-                longitude = row.get('Pick-up longitude', '')
+                # Check for 'remark' field
+                remark = row.get('remark', row.get('Remark', ''))
+                
+                latitude = row.get('latitude', row.get('Pick-up latitude', ''))
+                longitude = row.get('longitude', row.get('Pick-up longitude', ''))
                 
                 # Skip rows with missing coordinates
                 if not latitude or not longitude:
@@ -104,10 +111,12 @@ def load_students_from_csv():
                 
                 try:
                     student = {
-                        'id': idx,
+                        'id': idx,  # Internal ID for UI
+                        'student_id': student_id, # Original ID from CSV
                         'name': name,
                         'address': address,
                         'postal': '',  # CSV doesn't have postal code
+                        'address_note': remark, # Store remark
                         'latitude': float(latitude),
                         'longitude': float(longitude)
                     }
@@ -248,15 +257,57 @@ def analyze_clusters():
     return jsonify(result)
 
 
+@app.route('/api/analyze-clusters', methods=['POST'])
+def analyze_clusters_endpoint():
+    """Analyze student clusters without running full optimization"""
+    from route_optimizer import analyze_student_clusters
+    
+    if not school_location:
+        return jsonify({'error': 'Please set school location first'}), 400
+    
+    if not students or len(students) == 0:
+        return jsonify({'error': 'Please add students first'}), 400
+    
+    print(f"\n=== Analyze Clusters Request ===")
+    print(f"School location: {school_location.get('address', 'Unknown')}")
+    print(f"Number of students: {len(students)}")
+    
+    # Run cluster analysis
+    result = analyze_student_clusters(students, school_location)
+    
+    # Format response with cluster visualization data
+    clusters = []
+    for cluster in result.get('cluster_info', []):
+        clusters.append({
+            'id': cluster['id'],
+            'size': cluster['size'],
+            'center': {'lat': cluster['center'][0], 'lng': cluster['center'][1]},
+            'distance_from_school': round(cluster['distance_from_school'], 2),
+            'students': [{'name': s['name'], 'lat': s['latitude'], 'lng': s['longitude']} 
+                        for s in cluster['students']]
+        })
+    
+    isolated = [{'name': s['name'], 'lat': s['latitude'], 'lng': s['longitude']} 
+                for s in result.get('isolated_students', [])]
+    
+    return jsonify({
+        'n_clusters': result.get('n_clusters', len(clusters)),
+        'clusters': clusters,
+        'isolated_students': isolated,
+        'recommended_buses': result.get('recommended_buses', 1),
+        'total_students': len(students)
+    })
+
+
 @app.route('/api/optimise-routes', methods=['POST'])
 def optimise_routes_endpoint():
     """Optimise bus routes"""
     from route_optimizer import optimize_routes
     
     data = request.json
-    max_buses = data.get('max_buses', 3)
+    max_buses = int(data.get('max_buses', 3))
     school_time = data.get('school_time', '07:30')  # Default 7:30 AM
-    max_ride_time = data.get('max_ride_time', 60)  # Default 60 minutes
+    max_ride_time = int(data.get('max_ride_time', 60))  # Default 60 minutes
     
     # Convert school_time (HH:MM) to seconds from midnight
     try:
@@ -280,8 +331,64 @@ def optimise_routes_endpoint():
         print("ERROR: No students added")
         return jsonify({'error': 'Please add students first'}), 400
     
-    result = optimize_routes(school_location, students, max_buses, API_KEY, 
-                            school_arrival_seconds, max_ride_time)
+    import traceback
+    import traceback
+    try:
+        # Fetch active vehicles for fleet-aware optimization
+        # We need them primarily for capacities, but will use their IDs for assignment later
+        active_vehicles = Vehicle.query.filter_by(status='active').order_by(Vehicle.id).all()
+        
+        # Extract capacities (default to 40 if 0/None)
+        fleet_capacities = [v.capacity if v.capacity and v.capacity > 0 else 40 for v in active_vehicles]
+        
+        # Pass fleet_capacities to optimizer
+        result = optimize_routes(school_location, students, max_buses, API_KEY, 
+                                school_arrival_seconds, max_ride_time,
+                                fleet_capacities=fleet_capacities)
+        
+        # Inject context for saving/restoring history
+        result['school'] = school_location
+        result['all_students'] = students
+        
+        print(f"\n=== Optimization complete ===")
+        print(f"Routes: {len(result.get('routes', []))}, Error: {result.get('error', 'None')}")
+    except Exception as e:
+        print(f"\n!!! OPTIMIZATION CRASHED !!!")
+        traceback.print_exc()
+        result = {'error': str(e), 'routes': []}
+    
+    # --- Assign Real Bus IDs ---
+    try:
+        if result.get('routes'):
+            # Fetch active vehicles (if not already fetched above, but strictly we should use the same list)
+            # We already fetched 'active_vehicles' above.
+            
+            for i, route in enumerate(result['routes']):
+                # Determine which vehicle from the fleet this route belongs to
+                # The optimizer returns 'vehicle_index' if it used a specific fleet vehicle.
+                # If missing (legacy/fallback), assume 1:1 mapping with loop index.
+                fleet_idx = route.get('vehicle_index', i)
+                
+                # If we have a real vehicle available at this index
+                if 0 <= fleet_idx < len(active_vehicles):
+                    vehicle = active_vehicles[fleet_idx]
+                    route['bus_number'] = f"Bus {i + 1}"
+                    route['vehicle_plate'] = vehicle.plate_number
+                    route['vehicle_id'] = vehicle.id
+                    route['vehicle_capacity'] = vehicle.capacity
+                else:
+                    # Fallback for virtual/extra buses
+                    route['bus_number'] = f"Bus {i + 1}"
+                    route['vehicle_plate'] = "Pending"
+                    route['vehicle_id'] = ""
+            
+            print(f"Assigned real vehicles to {len(result['routes'])} routes.")
+    except Exception as e:
+        print(f"Error assigning vehicle IDs: {e}")
+        import traceback
+        traceback.print_exc()
+        # Ensure result is still returned even if assignment fails
+    # ---------------------------
     
     return jsonify(result)
 
@@ -437,24 +544,38 @@ def list_vehicles():
 
 @app.route('/api/vehicles', methods=['POST'])
 def create_vehicle():
-    """Create a new vehicle"""
+    """Create a new vehicle with unique ID based on type"""
     data = request.json
     if not data or 'plate_number' not in data:
         return jsonify({'error': 'plate_number is required'}), 400
+    if not data.get('type_id'):
+        return jsonify({'error': 'type_id is required'}), 400
+    
+    # Get vehicle type
+    vtype = VehicleType.query.get(data['type_id'])
+    if not vtype:
+        return jsonify({'error': 'Invalid vehicle type'}), 400
+    
+    # Generate ID: {CODE}{CAPACITY}-{NEXT_NUMBER}
+    # e.g., MB20-01, SB30-02
+    existing_count = Vehicle.query.filter_by(type_id=vtype.id).count()
+    next_num = existing_count + 1
+    unique_id = f"{vtype.code}{vtype.capacity}-{next_num:02d}"
     
     vehicle = Vehicle(
+        id=unique_id,
         plate_number=data['plate_number'],
         nickname=data.get('nickname', ''),
         driver_name=data.get('driver_name', ''),
         status=data.get('status', 'active'),
-        type_id=data.get('type_id')
+        type_id=vtype.id
     )
     db.session.add(vehicle)
     db.session.commit()
     return jsonify(vehicle.to_dict()), 201
 
 
-@app.route('/api/vehicles/<int:vehicle_id>', methods=['PUT'])
+@app.route('/api/vehicles/<vehicle_id>', methods=['PUT'])
 def update_vehicle(vehicle_id):
     """Update a vehicle"""
     vehicle = Vehicle.query.get_or_404(vehicle_id)
@@ -475,7 +596,7 @@ def update_vehicle(vehicle_id):
     return jsonify(vehicle.to_dict())
 
 
-@app.route('/api/vehicles/<int:vehicle_id>', methods=['DELETE'])
+@app.route('/api/vehicles/<vehicle_id>', methods=['DELETE'])
 def delete_vehicle(vehicle_id):
     """Delete a vehicle"""
     vehicle = Vehicle.query.get_or_404(vehicle_id)
@@ -519,7 +640,164 @@ def vehicles_page():
     return render_template('vehicles.html')
 
 
+@app.route('/api/export-routes-csv', methods=['POST'])
+def export_routes_csv():
+    """
+    Export optimized routes to CSV/JSON with:
+    student_id, postal_code, address_note, pickup_time, route_name
+    """
+    try:
+        data = request.json
+        routes = data.get('routes', [])
+        format_type = request.args.get('format', 'csv') # 'csv' or 'json'
+        
+        if not routes:
+            return jsonify({'error': 'No routes data provided'}), 400
+        
+        # Helper to find student by name
+        # Create a lookup map for speed and accuracy
+        student_map = {s['name']: s for s in students}
+        
+        # Helper to format time
+        def format_time_str(seconds_from_midnight):
+            h = int(seconds_from_midnight // 3600) % 24
+            m = int(seconds_from_midnight % 3600) // 60
+            period = "AM" if h < 12 else "PM"
+            display_h = h if h <= 12 else h - 12
+            if display_h == 0: display_h = 12
+            return f"{display_h}:{m:02d} {period}"
+
+        # Import get_postal_code from route_optimizer
+        # We do this here to avoid circular imports at top level
+        from route_optimizer import get_postal_code
+        
+        # Ensure API_KEY is available
+        api_key_to_use = API_KEY
+        if not api_key_to_use:
+            print("WARNING: API_KEY not set for export")
+
+        # Consolidate results for both CSV and JSON
+        export_data = []
+
+        # ... (Header for CSV moved below loop)
+        
+        # School Arrival Time (default 7:30 AM = 27000s)
+        # ideally this comes from input params, but we can infer or default
+        SCHOOL_ARRIVAL_TARGET = 27000 
+        # Actually, let's deduce from route total time if possible, or use the default.
+        # The user's goal is relative order and time.
+        
+        for route_idx, route in enumerate(routes):
+            route_name = route.get('bus_number', f"Bus {route_idx + 1}")
+            vehicle_id = route.get('vehicle_id', '')
+            vehicle_plate = route.get('vehicle_plate', '')
+            
+            # Calculate start time
+            # School Arrival (Target) - Total Duration = Start Time
+            # Note: This assumes the route is tight to arrival time.
+            total_duration = route.get('total_time_seconds', 0)
+            if not total_duration:
+                # Fallback if total_time_seconds missing
+                total_duration = route.get('max_route_time', 0) 
+            
+            # Start time of the bus (leaving creation point/school)
+            current_time = SCHOOL_ARRIVAL_TARGET - total_duration
+            
+            segments = route.get('segments', [])
+            
+            for seg in segments:
+                # Add travel time to current time
+                duration = seg.get('time', 0)
+                current_time += duration
+                
+                # If this segment ends at a student, record pickup
+                student_name = seg.get('student')
+                if student_name and student_name != 'School' and student_name != 'Return to School':
+                    student_obj = student_map.get(student_name)
+                    
+                    if student_obj:
+                        s_id = student_obj.get('student_id', student_obj.get('id', ''))
+                        remark = student_obj.get('address_note', '')
+                        lat = student_obj.get('latitude')
+                        lng = student_obj.get('longitude')
+                        address = student_obj.get('address', '')
+                        
+                        # Reverse Geocode
+                        postal = ''
+                        try:
+                            if api_key_to_use:
+                                postal = get_postal_code(lat, lng, api_key_to_use)
+                        except Exception as geo_err:
+                            print(f"Geocoding error for {student_name}: {geo_err}")
+                            postal = ''
+                        
+                        # Pickup Time
+                        pickup_str = format_time_str(current_time)
+                        
+                        export_data.append({
+                            'student_id': s_id,
+                            'postal_code': postal,
+                            'address_note': remark,
+                            'pickup_time': pickup_str,
+                            'route_name': route_name,
+                            'vehicle_id': vehicle_id,
+                            'vehicle_plate': vehicle_plate,
+                            'student_name': student_name,
+                            'address': address
+                        })
+                    else:
+                        # Student not found
+                         export_data.append({
+                            'student_id': 'Unknown',
+                            'postal_code': '',
+                            'address_note': '',
+                            'pickup_time': format_time_str(current_time),
+                            'route_name': route_name,
+                            'vehicle_id': vehicle_id,
+                            'vehicle_plate': vehicle_plate,
+                            'student_name': student_name,
+                            'address': ''
+                        })
+
+        if format_type == 'json':
+            return jsonify({'data': export_data})
+        
+        # CSV FORMAT
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Bus Number', 'Vehicle ID', 'Plate Number', 'Student ID', 'Postal Code', 'Remark', 'Pickup Time', 'Student Name', 'Address'])
+        
+        for item in export_data:
+             writer.writerow([
+                 item['route_name'],
+                 item['vehicle_id'],
+                 item['vehicle_plate'],
+                 item['student_id'],
+                 item['postal_code'],
+                 item['address_note'],
+                 item['pickup_time'],
+                 item['student_name'],
+                 item['address']
+             ])
+
+        # Create response
+        output.seek(0)
+        from flask import Response
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-disposition": "attachment; filename=optimized_routes.csv"}
+        )
+
+    except Exception as e:
+        print(f"Export CSV Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     import os
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
+
+
+
