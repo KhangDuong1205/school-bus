@@ -741,7 +741,60 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
     routing.AddDimensionWithVehicleCapacity(
         demand_callback_index, 0, capacities, True, 'Capacity'
     )
-    
+
+    # CAPACITY UTILIZATION PENALTY: Penalize wasted seats (unused capacity)
+    # Strategy: Set soft upper bound at vehicle capacity with penalty
+    # This encourages filling the bus as close to capacity as possible
+    capacity_dimension = routing.GetDimensionOrDie('Capacity')
+    PENALTY_PER_EMPTY_SEAT = 100  # Cost per wasted seat - encourages using smaller buses
+
+    for vehicle_id in range(num_vehicles):
+        end_index = routing.End(vehicle_id)
+        vehicle_capacity = capacities[vehicle_id]
+        # Soft upper bound at capacity - but we want to encourage filling it
+        # Actually, we need to penalize the GAP between actual and capacity
+        # OR-Tools way: Set soft upper bound high and penalize not reaching it
+        # Alternative: Set slack cost on the capacity dimension
+
+        # Better approach: Use soft lower bound behavior indirectly
+        # By setting a high target and penalizing deviations, we encourage full utilization
+        # But OR-Tools doesn't have soft lower bound, so we invert:
+
+        # Set soft upper bound at a very high value (1000 students)
+        # The penalty applies when exceeding, not when under
+        # So this doesn't work for penalizing under-utilization...
+
+        # CORRECT APPROACH for OR-Tools:
+        # Penalize routes that don't use their full capacity
+        # By setting soft upper bound at vehicle_capacity with penalty,
+        # solver gets penalized if students exceed capacity (hard constraint violation)
+        # But we want penalty for NOT filling...
+
+        # Actually, the best way: minimize slack by setting soft upper bound
+        # on the cumulative value to encourage higher values
+        # We do this by setting target = capacity, and penalize going over (which is invalid anyway)
+        # The key insight: this doesn't directly penalize under-utilization
+
+        # WORKAROUND: Use a different dimension or modify the fixed cost
+        # based on capacity utilization - but that's post-solve
+
+        # SIMPLER APPROACH: Reduce fixed cost for smaller buses
+        # This makes smaller buses cheaper to use, so solver prefers them
+        pass  # Will use alternative approach below
+
+    # ALTERNATIVE: Variable fixed cost based on bus size
+    # Smaller buses are cheaper to use, so solver prefers them when possible
+    # Large buses only used when capacity is actually needed
+    VEHICLE_FIXED_COST_BASE = 20000
+    for vehicle_id in range(num_vehicles):
+        vehicle_capacity = capacities[vehicle_id]
+        # Smaller buses have lower fixed cost
+        # Cost = base - (capacity savings)
+        # 45-seater: 20000, 25-seater: 15000 (saves 5000 for using smaller bus)
+        capacity_penalty = (vehicle_capacity - 20) * 200  # Larger buses cost more
+        fixed_cost = VEHICLE_FIXED_COST_BASE + capacity_penalty
+        routing.SetFixedCostOfVehicle(fixed_cost, vehicle_id)
+
     # Time constraint
     def time_callback(from_index, to_index):
         from_node = manager.IndexToNode(from_index)
@@ -756,26 +809,21 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
     time_callback_index = routing.RegisterTransitCallback(time_callback)
     
     max_ride_seconds = int(max_ride_time_minutes * 60)
-    
-    # STRATEGY CHANGE: Strict Soft Limits instead of Tight Hard Limits
-    # Hard Limit: Double the requested time (e.g., 120m) to preventing "Infeasible" on tough datasets
-    # Soft Limit: The requested time (e.g., 60m) with MASSIVE penalty (1000/sec)
-    # This forces solver to adhere to 60m unless absolutely impossible.
-    max_hard_cap = max_ride_seconds * 2 
+
+    # HARD CONSTRAINT: Time limit is strict, not soft
+    # Routes MUST be under the max_ride_time limit
+    # If infeasible with available fleet, solver will return no solution
+    max_hard_cap = max_ride_seconds  # Strict hard cap - no violations allowed
 
     routing.AddDimension(
         time_callback_index, slack_max=1800, capacity=max_hard_cap,
         fix_start_cumul_to_zero=True, name='Time'
     )
-    
+
     time_dimension = routing.GetDimensionOrDie('Time')
-    
-    # Apply Strict Soft Upper Bound to Vehicle End nodes (Total Route Duration)
-    for vehicle_id in range(num_vehicles):
-        end_index = routing.End(vehicle_id)
-        time_dimension.SetCumulVarSoftUpperBound(end_index, max_ride_seconds, 1000) # 1000 cost per second over limit
-    
-    time_dimension = routing.GetDimensionOrDie('Time')
+
+    # No soft upper bound needed - hard cap enforces the limit
+    # Global span cost to minimize route duration spread
     time_dimension.SetGlobalSpanCostCoefficient(200)
     
     VEHICLE_FIXED_COST = 20000
@@ -1495,22 +1543,62 @@ def optimize_routes(school: Dict, students: List[Dict], max_buses: int, api_key:
     if fleet_capacities and len(fleet_capacities) > 0:
         print(f"!!! USING HETEROGENEOUS FLEET !!!")
         print(f"Vehicles: {len(fleet_capacities)}, Capacities: {fleet_capacities}")
-        
+
         # When using specific fleet, we skip the heuristic splitting and rely on the solver
         # to assign the right vehicle to the right set of students globally.
-        # We also skip the "min_buses" check because the user provided a specific set.
-        
+
         result = solve_cvrp(school, students, len(fleet_capacities), api_key,
                            school_arrival_time=school_arrival_time,
                            max_ride_time_minutes=max_ride_time,
                            vehicle_capacities=fleet_capacities)
-        
+
         # Add visualization info
         result['cluster_visualization'] = cluster_visualization
-        
-        # FIX: Enrich routes with real geometry (was missing in fleet path)
+
+        # Handle infeasibility (hard time constraint too tight for available fleet)
+        if 'error' in result or not result.get('routes'):
+            # Estimate how many more buses might be needed
+            total_capacity = sum(fleet_capacities)
+            students_count = len(students)
+
+            # Calculate a rough estimate of buses needed for time constraint
+            estimated_buses_for_time = _estimate_buses_for_time_constraint(
+                school, students, max_ride_time, fleet_capacities
+            )
+
+            error_msg = result.get('error', 'No feasible solution found')
+            error_msg += '\n\n'
+            error_msg += f'Fleet has {len(fleet_capacities)} vehicle(s) with total capacity {total_capacity}.\n'
+            error_msg += f'With the {max_ride_time}-minute time constraint, '
+            error_msg += f'you may need approximately {estimated_buses_for_time} vehicle(s).\n'
+            error_msg += f'Current fleet: {len(fleet_capacities)} vehicle(s).\n'
+            if estimated_buses_for_time > len(fleet_capacities):
+                error_msg += f'>>> Please add at least {estimated_buses_for_time - len(fleet_capacities)} more vehicle(s) to your fleet.'
+
+            return {
+                'routes': [],
+                'total_buses': 0,
+                'error': error_msg,
+                'cluster_visualization': cluster_visualization,
+                'estimated_buses_needed': estimated_buses_for_time,
+                'current_fleet_size': len(fleet_capacities)
+            }
+
+        # Enrich routes with real geometry
         enrich_routes_with_geometry(result['routes'], api_key, school_arrival_time, max_ride_time)
-        
+
+        # Check for time violations after geometry enrichment (real travel times)
+        all_violations = []
+        for route in result['routes']:
+            if route.get('time_violations'):
+                all_violations.extend(route['time_violations'])
+
+        if all_violations:
+            # Hard constraint should have prevented this, but check anyway after real geometry
+            print(f"WARNING: {len(all_violations)} time violation(s) detected after geometry enrichment")
+            result['time_violations'] = all_violations
+            result['optimization_note'] = f"Warning: {len(all_violations)} student(s) exceed {max_ride_time}-minute ride time after real road calculation"
+
         return result
     
     # ===== FEASIBILITY CHECK =====
@@ -1584,49 +1672,65 @@ def _solve_unified(school: Dict, students: List[Dict], max_buses: int, api_key: 
     Uses SetFixedCostOfVehicle to minimize buses in a single run.
     """
     print(f"Solving with up to {max_buses} bus(es)\n")
-    
-    result = solve_cvrp(school, students, max_buses, api_key, 
+
+    result = solve_cvrp(school, students, max_buses, api_key,
                         school_arrival_time=school_arrival_time,
                         max_ride_time_minutes=max_ride_time)
-    
+
     if 'error' in result or not result['routes']:
+        # Estimate buses needed for time constraint
+        estimated_buses = _estimate_buses_for_time_constraint(
+            school, students, max_ride_time, [40] * max_buses
+        )
+        error_msg = result.get('error', 'No feasible solution found with hard time constraint')
+        if estimated_buses > max_buses:
+            error_msg += f'\n\nWith the {max_ride_time}-minute time constraint, '
+            error_msg += f'you may need approximately {estimated_buses} bus(es). '
+            error_msg += f'Current limit: {max_buses} bus(es).'
+
         return {
             'routes': [],
             'total_buses': 0,
-            'error': result.get('error', 'CVRP solver failed to find a solution'),
-            'cluster_visualization': cluster_visualization
+            'error': error_msg,
+            'cluster_visualization': cluster_visualization,
+            'estimated_buses_needed': estimated_buses
         }
-    
+
     # Enrich routes with real road geometry (post-processing)
     enrich_routes_with_geometry(result['routes'], api_key, school_arrival_time, max_ride_time)
-    
-    if not result.get('time_violations'):
-        selection_note = f"Optimal: {result['num_buses']} bus(es) with vehicle minimization"
-        print(f"Optimal: {result['num_buses']} bus(es)")
-        
+
+    # Check for time violations after geometry enrichment (real travel times may differ)
+    all_violations = []
+    for route in result['routes']:
+        if route.get('time_violations'):
+            all_violations.extend(route['time_violations'])
+
+    if all_violations:
+        print(f"WARNING: {len(all_violations)} time violation(s) after geometry enrichment")
         return {
             'routes': result['routes'],
             'total_buses': result['num_buses'],
             'max_route_time_minutes': round(result['max_route_time'] / 60, 1),
             'max_student_ride_time_minutes': round(result.get('max_student_ride_time', 0) / 60, 1),
             'total_distance_km': round(result['total_distance'], 2),
-            'optimization_note': selection_note,
+            'optimization_note': f"Warning: {len(all_violations)} student(s) exceed {max_ride_time}-minute ride time after real road calculation",
+            'time_violations': all_violations,
             'cluster_visualization': cluster_visualization,
-            'routing_strategy': 'unified_optimized'
+            'routing_strategy': 'unified_with_violations'
         }
-    
-    print(f"Solution has {len(result['time_violations'])} time violation(s)")
-    
+
+    selection_note = f"Optimal: {result['num_buses']} bus(es) - all routes within {max_ride_time} min"
+    print(f"Optimal: {result['num_buses']} bus(es)")
+
     return {
         'routes': result['routes'],
         'total_buses': result['num_buses'],
         'max_route_time_minutes': round(result['max_route_time'] / 60, 1),
         'max_student_ride_time_minutes': round(result.get('max_student_ride_time', 0) / 60, 1),
         'total_distance_km': round(result['total_distance'], 2),
-        'optimization_note': f"Warning: {len(result['time_violations'])} student(s) exceed ride time limit",
-        'time_violations': result['time_violations'],
+        'optimization_note': selection_note,
         'cluster_visualization': cluster_visualization,
-        'routing_strategy': 'unified_with_violations'
+        'routing_strategy': 'unified_optimized'
     }
 
 
@@ -1823,7 +1927,7 @@ def _group_far_isolated(far_isolated: List[Dict]) -> List[List[Dict]]:
                 used.add(j)
         
         groups.append(group)
-    
+
     return groups
 
 
@@ -1870,6 +1974,82 @@ def _select_best_solution(results: List[Dict], all_results_with_violations: List
         'cluster_visualization': cluster_visualization,
         'routing_strategy': 'unified'
     }
+
+
+def _estimate_buses_for_time_constraint(school: Dict, students: List[Dict],
+                                        max_ride_time_minutes: int,
+                                        fleet_capacities: List[int]) -> int:
+    """
+    Estimate how many buses are needed to meet the time constraint.
+    This is a heuristic based on student distribution and distance from school.
+
+    Logic:
+    1. Calculate average distance from school
+    2. Estimate route time per student (travel + pickup)
+    3. Calculate how many students can fit in one route within time limit
+    4. Estimate total buses needed
+    """
+    if not students:
+        return 1
+
+    max_ride_seconds = max_ride_time_minutes * 60
+
+    # Calculate distances from school for all students
+    distances_from_school = []
+    for student in students:
+        dist = haversine_distance(
+            school['latitude'], school['longitude'],
+            student['latitude'], student['longitude']
+        )
+        distances_from_school.append(dist)
+
+    avg_distance = sum(distances_from_school) / len(distances_from_school)
+    max_distance = max(distances_from_school)
+
+    # Estimate time components
+    # Average speed: 50 km/h = ~8.3 min per km
+    # Road factor: ~1.5x for urban driving
+    travel_time_per_km = (1 / 50) * 60 * 1.5  # minutes per km (with road factor)
+    pickup_time_per_student = 1  # minute per student
+
+    # Estimate average route time for a student at avg distance
+    # This includes: travel to student + pickup + travel to next student + ... + travel to school
+    # Simplified: assume each student adds avg travel segment + pickup
+    avg_time_per_student = (avg_distance * travel_time_per_km / 2) + pickup_time_per_student
+
+    # Add base time (first pickup and return to school)
+    base_route_time = max_distance * travel_time_per_km  # Time to reach farthest + return
+
+    # How many students can fit in one route?
+    available_time_for_pickups = max_ride_seconds / 60 - base_route_time
+    if available_time_for_pickups <= 0:
+        # Even one student might exceed time limit (school is very far)
+        students_per_route = 1
+    else:
+        students_per_route = max(1, int(available_time_for_pickups / avg_time_per_student))
+
+    # Capacity constraint
+    avg_capacity = sum(fleet_capacities) / len(fleet_capacities) if fleet_capacities else 40
+    students_per_route = min(students_per_route, int(avg_capacity))
+
+    # Calculate buses needed
+    buses_for_time = math.ceil(len(students) / students_per_route)
+
+    # Minimum buses for capacity
+    total_capacity = sum(fleet_capacities) if fleet_capacities else 40 * buses_for_time
+    buses_for_capacity = math.ceil(len(students) / (total_capacity / len(fleet_capacities)))
+
+    # Take the higher of the two
+    estimated_buses = max(buses_for_time, buses_for_capacity)
+
+    # Add a safety margin (20% more buses)
+    estimated_buses = math.ceil(estimated_buses * 1.2)
+
+    print(f"  Estimation: avg_dist={avg_distance:.1f}km, max_dist={max_distance:.1f}km")
+    print(f"  Estimation: students_per_route={students_per_route}, buses_for_time={buses_for_time}")
+    print(f"  Estimation: total estimated buses (with margin)={estimated_buses}")
+
+    return max(estimated_buses, len(fleet_capacities) if fleet_capacities else 1)
 
 
 # Remove old clustering function - OR-Tools handles this automatically

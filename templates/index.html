@@ -668,8 +668,10 @@
                                 <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Vehicle ID</th>
                                 <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Plate</th>
                                 <th style="padding:8px; border-bottom:1px solid #cbd5e1;">ID</th>
+                                <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Lat</th>
+                                <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Long</th>
                                 <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Time</th>
-                                <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Address</th>
+                                <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Postal</th>
                                 <th style="padding:8px; border-bottom:1px solid #cbd5e1;">Remark</th>
                             </tr>
                         </thead>
@@ -944,12 +946,12 @@
 
         students.forEach(s => {
             const marker = L.circleMarker([s.latitude, s.longitude], {
-                radius: 6,
+                radius: 8,
                 fillColor: '#3b82f6',
-                color: '#fff',
+                color: '#ffffff',
                 weight: 2,
                 opacity: 1,
-                fillOpacity: 0.8
+                fillOpacity: 1.0
             }).addTo(map);
             marker.bindPopup(`<b>${s.name}</b><br>${s.address}`);
             markers[s.id] = marker;
@@ -1474,6 +1476,8 @@
                 <td style="padding:4px; color:#64748b; font-size:0.75rem;">${row.vehicle_id || '-'}</td>
                 <td style="padding:4px; font-weight:500;">${row.vehicle_plate || '-'}</td>
                 <td style="padding:4px;">${row.student_id}</td>
+                <td style="padding:4px;">${Number(row.latitude).toFixed(5)}</td>
+                <td style="padding:4px;">${Number(row.longitude).toFixed(5)}</td>
                 <td style="padding:4px;">${row.pickup_time}</td>
                 <td style="padding:4px;" title="${row.address}" onclick="alert('${row.address}')">${row.postal_code || 'No Postal'}</td>
                 <td style="padding:4px;">${row.address_note || '-'}</td>
@@ -1506,6 +1510,32 @@
         } catch (e) {
             alert('Download error: ' + e.message);
         }
+    }
+
+    // --- Route Toggling ---
+    function toggleRouteLayer(index, checkbox) {
+        const layer = routeLayers[index];
+        if (!layer) return;
+
+        if (checkbox.checked) {
+            if (!map.hasLayer(layer)) {
+                layer.addTo(map);
+            }
+        } else {
+            if (map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+        }
+    }
+
+    function toggleAllRoutes(headerCheckbox) {
+        const isChecked = headerCheckbox.checked;
+        const checkboxes = document.querySelectorAll('#busTableBody input[type="checkbox"]');
+
+        checkboxes.forEach((cb, index) => {
+            cb.checked = isChecked;
+            toggleRouteLayer(index, cb);
+        });
     }
 
     // --- Optimization Logic ---
@@ -1614,7 +1644,10 @@
                     <table class="bus-table" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
                         <thead style="background:white; position:sticky; top:0; z-index:10; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
                             <tr style="text-align:left; color:#64748b; border-bottom:1px solid #e2e8f0;">
-                                <th style="padding:8px 12px; font-weight:600;">Bus</th>
+                                <th style="padding:8px 12px; font-weight:600; width:30px;">
+                                    <input type="checkbox" checked onclick="toggleAllRoutes(this)" title="Toggle All">
+                                </th>
+                                <th style="padding:8px; font-weight:600;">Bus</th>
                                 <th style="padding:8px; font-weight:600;">Pax</th>
                                 <th style="padding:8px; font-weight:600;">Time</th>
                                 <th style="padding:8px; font-weight:600;">Dist</th>
@@ -1680,14 +1713,17 @@
             tr.onmouseout = () => { if (!tr.classList.contains('selected')) tr.style.background = 'white'; };
 
             tr.innerHTML = `
-                <td style="padding:10px 12px; font-weight:600; color:#334155; display:flex; align-items:center;">
+                <td style="padding:10px 12px;">
+                    <input type="checkbox" checked onclick="event.stopPropagation(); toggleRouteLayer(${i}, this)">
+                </td>
+                <td style="padding:10px; font-weight:600; color:#334155; display:flex; align-items:center;">
                     <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${color}; margin-right:8px;"></span>
                     ${busLabel}
                 </td>
-                <td style="padding:10px;">${route.student_count}</td>
+                <td style="padding:10px;">${pax}</td>
                 <td style="padding:10px;">${Math.round(durMin)}m</td>
                 <td style="padding:10px;">${distKm.toFixed(1)}km</td>
-                <td style="padding:10px; color:#64748b;">${route.students[0]?.pickup_time || '-'}</td>
+                <td style="padding:10px; color:#64748b;">${firstPickup}</td>
             `;
             tbody.appendChild(tr);
         });

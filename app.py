@@ -688,76 +688,35 @@ def export_routes_csv():
         # The user's goal is relative order and time.
         
         for route_idx, route in enumerate(routes):
-            route_name = route.get('bus_number', f"Bus {route_idx + 1}")
             vehicle_id = route.get('vehicle_id', '')
             vehicle_plate = route.get('vehicle_plate', '')
             
-            # Calculate start time
-            # School Arrival (Target) - Total Duration = Start Time
-            # Note: This assumes the route is tight to arrival time.
-            total_duration = route.get('total_time_seconds', 0)
-            if not total_duration:
-                # Fallback if total_time_seconds missing
-                total_duration = route.get('max_route_time', 0) 
+            # User requested to show "ID" (e.g., VN11-01) instead of Plate Number
+            if vehicle_id:
+                route_name = vehicle_id
+            elif vehicle_plate and vehicle_plate != 'Pending':
+                route_name = vehicle_plate
+            else:
+                 route_name = route.get('bus_number', f"Bus {route_idx + 1}")
             
-            # Start time of the bus (leaving creation point/school)
-            current_time = SCHOOL_ARRIVAL_TARGET - total_duration
+            # Use the students list directly from the route object
+            # This is populated by route_optimizer and contains all metadata (ID, times, etc.)
+            route_students = route.get('students', [])
             
-            segments = route.get('segments', [])
-            
-            for seg in segments:
-                # Add travel time to current time
-                duration = seg.get('time', 0)
-                current_time += duration
-                
-                # If this segment ends at a student, record pickup
-                student_name = seg.get('student')
-                if student_name and student_name != 'School' and student_name != 'Return to School':
-                    student_obj = student_map.get(student_name)
-                    
-                    if student_obj:
-                        s_id = student_obj.get('student_id', student_obj.get('id', ''))
-                        remark = student_obj.get('address_note', '')
-                        lat = student_obj.get('latitude')
-                        lng = student_obj.get('longitude')
-                        address = student_obj.get('address', '')
-                        
-                        # Reverse Geocode
-                        postal = ''
-                        try:
-                            if api_key_to_use:
-                                postal = get_postal_code(lat, lng, api_key_to_use)
-                        except Exception as geo_err:
-                            print(f"Geocoding error for {student_name}: {geo_err}")
-                            postal = ''
-                        
-                        # Pickup Time
-                        pickup_str = format_time_str(current_time)
-                        
-                        export_data.append({
-                            'student_id': s_id,
-                            'postal_code': postal,
-                            'address_note': remark,
-                            'pickup_time': pickup_str,
-                            'route_name': route_name,
-                            'vehicle_id': vehicle_id,
-                            'vehicle_plate': vehicle_plate,
-                            'student_name': student_name,
-                            'address': address
-                        })
-                    else:
-                        # Student not found
-                         export_data.append({
-                            'student_id': 'Unknown',
-                            'postal_code': '',
-                            'address_note': '',
-                            'pickup_time': format_time_str(current_time),
-                            'route_name': route_name,
-                            'vehicle_id': vehicle_id,
-                            'vehicle_plate': vehicle_plate,
-                            'student_name': student_name,
-                            'address': ''
-                        })
+            for s in route_students:
+                export_data.append({
+                    'route_name': route_name,
+                    'vehicle_id': vehicle_id,
+                    'vehicle_plate': vehicle_plate,
+                    'student_id': s.get('student_id', s.get('id', 'Unknown')),
+                    'student_name': s.get('name', 'Unknown'),
+                    'pickup_time': s.get('pickup_time', '-'),
+                    'latitude': s.get('latitude', ''),
+                    'longitude': s.get('longitude', ''),
+                    'postal_code': s.get('postal', '') or s.get('postal_code', ''),
+                    'address': s.get('address', ''),
+                    'address_note': s.get('address_note', '')
+                })
 
         if format_type == 'json':
             return jsonify({'data': export_data})
@@ -765,7 +724,10 @@ def export_routes_csv():
         # CSV FORMAT
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(['Bus Number', 'Vehicle ID', 'Plate Number', 'Student ID', 'Postal Code', 'Remark', 'Pickup Time', 'Student Name', 'Address'])
+        # CSV FORMAT
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Bus', 'Vehicle ID', 'Plate Number', 'Student ID', 'Latitude', 'Longitude', 'Postal Code', 'Remark', 'Pickup Time', 'Student Name', 'Address'])
         
         for item in export_data:
              writer.writerow([
@@ -773,6 +735,8 @@ def export_routes_csv():
                  item['vehicle_id'],
                  item['vehicle_plate'],
                  item['student_id'],
+                 item['latitude'],
+                 item['longitude'],
                  item['postal_code'],
                  item['address_note'],
                  item['pickup_time'],
