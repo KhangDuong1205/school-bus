@@ -58,8 +58,7 @@ AVERAGE_PICKUP_TIME = 60  # seconds per student pickup
 STUDENT_CSV_PATH = os.path.join(os.path.dirname(__file__), 'student-data', 'swat XCL dan test upload - Sheet1.csv')
 
 def load_students_from_csv():
-    """Load students from CSV file and set school location from drop-off coordinates"""
-    global school_location
+    """Load students from CSV file (students only, school location is set via Settings)"""
     loaded_students = []
     
     if not os.path.exists(STUDENT_CSV_PATH):
@@ -73,7 +72,7 @@ def load_students_from_csv():
                 # Extract student data from CSV columns
                 # User Requirement: Capture student_id and remark
                 student_id = row.get('student_id', row.get('ID', str(idx)))
-                name = row.get('ID', f'Student {idx}')  # Keep existing logic for name for now
+                name = row.get("Sender's first name", row.get('Name', row.get('name', row.get('student_name', ''))))
                 
                 address = row.get('Pick-up address line 1', '')
                 address_2 = row.get('Pick-up address line 2', '')
@@ -90,25 +89,6 @@ def load_students_from_csv():
                 if not latitude or not longitude:
                     continue
                 
-                # Extract school location from first row's drop-off coordinates
-                if school_location is None:
-                    drop_off_lat = row.get('Drop-off latitude', '')
-                    drop_off_lng = row.get('Drop-off longitude', '')
-                    drop_off_address = row.get('Drop-off address line 1', '')
-                    
-                    if drop_off_lat and drop_off_lng:
-                        try:
-                            school_location = {
-                                'name': 'School',
-                                'address': drop_off_address,
-                                'postal': '',
-                                'latitude': float(drop_off_lat),
-                                'longitude': float(drop_off_lng)
-                            }
-                            print(f"School location set from CSV: {drop_off_address} ({drop_off_lat}, {drop_off_lng})")
-                        except ValueError:
-                            pass
-                
                 try:
                     student = {
                         'id': idx,  # Internal ID for UI
@@ -118,7 +98,9 @@ def load_students_from_csv():
                         'postal': '',  # CSV doesn't have postal code
                         'address_note': remark, # Store remark
                         'latitude': float(latitude),
-                        'longitude': float(longitude)
+                        'longitude': float(longitude),
+                        'family_code': str(row.get('family_code', row.get('Family Code', ''))),
+                        'special_needs': str(row.get('special_needs', row.get('Special Needs', ''))).lower() in ['true', 'yes', '1', 'y']
                     }
                     loaded_students.append(student)
                 except ValueError:
@@ -134,6 +116,10 @@ def load_students_from_csv():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/export-data')
+def export_data():
+    return render_template('export_data.html')
 
 @app.route('/api/search', methods=['POST'])
 def search_address():
@@ -184,7 +170,9 @@ def add_student():
         'address': data['address'],
         'postal': data['postal'],
         'latitude': float(data['latitude']),
-        'longitude': float(data['longitude'])
+        'longitude': float(data['longitude']),
+        'family_code': str(data.get('family_code', '')),
+        'special_needs': bool(data.get('special_needs', False))
     }
     
     students.append(student)
@@ -212,6 +200,29 @@ def get_stats():
 def get_school():
     """Get school location"""
     return jsonify(school_location)
+
+
+@app.route('/api/school', methods=['PUT'])
+def set_school():
+    """Set school location from Settings page"""
+    global school_location
+    data = request.json
+    
+    if not data or 'latitude' not in data or 'longitude' not in data:
+        return jsonify({'error': 'latitude and longitude are required'}), 400
+    
+    try:
+        school_location = {
+            'name': data.get('name', 'School'),
+            'address': data.get('address', ''),
+            'postal': data.get('postal', ''),
+            'latitude': float(data['latitude']),
+            'longitude': float(data['longitude'])
+        }
+        print(f"School location set from Settings: {school_location['address']} ({school_location['latitude']}, {school_location['longitude']})")
+        return jsonify({'success': True, 'school': school_location})
+    except (ValueError, TypeError) as e:
+        return jsonify({'error': f'Invalid coordinates: {e}'}), 400
 
 
 @app.route('/api/analyze-clusters', methods=['GET'])
@@ -391,6 +402,36 @@ def optimise_routes_endpoint():
     # ---------------------------
     
     return jsonify(result)
+
+
+@app.route('/api/recalculate-routes', methods=['POST'])
+def recalculate_routes_endpoint():
+    """Recalculate route times and distances after manual drag-and-drop tweaks"""
+    from route_optimizer import recalculate_manually_adjusted_routes
+    
+    data = request.json
+    routes = data.get('routes', [])
+    school_time = data.get('school_time', '07:30')
+    max_ride_time = int(data.get('max_ride_time', 60))
+    
+    if not school_location:
+        return jsonify({'error': 'School location missing'}), 400
+        
+    try:
+        hours, minutes = map(int, school_time.split(':'))
+        school_arrival_seconds = hours * 3600 + minutes * 60
+    except:
+        school_arrival_seconds = 27000
+        
+    try:
+        recalculated = recalculate_manually_adjusted_routes(
+            routes, school_location, API_KEY, school_arrival_seconds, max_ride_time
+        )
+        return jsonify({'success': True, 'routes': recalculated})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/load-students-csv', methods=['POST'])
@@ -638,6 +679,18 @@ def vehicle_types_page():
 def vehicles_page():
     """Fleet management page"""
     return render_template('vehicles.html')
+
+
+@app.route('/students')
+def students_page():
+    """Students management page"""
+    return render_template('students.html')
+
+
+@app.route('/settings')
+def settings_page():
+    """Settings page - set school location"""
+    return render_template('settings.html')
 
 
 @app.route('/api/export-routes-csv', methods=['POST'])

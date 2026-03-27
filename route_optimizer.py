@@ -314,17 +314,8 @@ def build_distance_matrix_fast(school: Dict, students: List[Dict]) -> List[List[
                 points[j]['latitude'], points[j]['longitude']
             )
             
-            # Adaptive road factor based on distance
-            # INCREASED IMPACT: Real roads are much slower than Haversine
-            # Short distances (<2km): 2.0x (dense urban, many turns, traffic lights)
-            # Medium distances (2-10km): 1.6x (suburban)
-            # Long distances (>10km): 1.4x (highways)
-            if distance_km < 2:
-                road_factor = 2.0
-            elif distance_km < 10:
-                road_factor = 1.6
-            else:
-                road_factor = 1.4
+            # Constant Tortuosity Multiplier of 1.5 to simulate urban road detours
+            road_factor = 1.5
             
             # Convert to meters for OR-Tools
             distance_m = int(distance_km * road_factor * 1000)
@@ -334,6 +325,91 @@ def build_distance_matrix_fast(school: Dict, students: List[Dict]) -> List[List[
     
     print("Distance matrix built")
     return distance_matrix
+
+
+def build_distance_and_time_matrices(school: Dict, students: List[Dict], api_key: str) -> Tuple[List[List[int]], List[List[int]]]:
+    """
+    Build BOTH distance (meters) and time (seconds) matrices from real OneMap API data.
+    Uses parallel fetching with caching for performance.
+    Falls back to haversine estimation when API is unavailable.
+    Returns: (distance_matrix, time_matrix)
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    points = [school] + students
+    n = len(points)
+    distance_matrix = [[0] * n for _ in range(n)]
+    time_matrix = [[0] * n for _ in range(n)]
+    
+    print(f"Building distance + time matrices for {n} points (real API data)...")
+    
+    # Collect all pairs
+    pairs_to_fetch = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            pairs_to_fetch.append((i, j))
+    
+    total_pairs = len(pairs_to_fetch)
+    completed = [0]
+    cache_hits = [0]
+    api_calls = [0]
+    
+    def fetch_pair(pair):
+        i, j = pair
+        cache_key = f"{points[i]['latitude']:.4f},{points[i]['longitude']:.4f}->{points[j]['latitude']:.4f},{points[j]['longitude']:.4f}"
+        if cache_key in distance_cache:
+            cache_hits[0] += 1
+        else:
+            api_calls[0] += 1
+        
+        dist_km, time_s, _ = get_route_from_onemap(
+            points[i]['latitude'], points[i]['longitude'],
+            points[j]['latitude'], points[j]['longitude'], api_key
+        )
+        
+        completed[0] += 1
+        if completed[0] % 50 == 0:
+            print(f"  Progress: {completed[0]}/{total_pairs} ({cache_hits[0]} cached, {api_calls[0]} API)")
+        
+        return (i, j, int(dist_km * 1000), int(time_s))
+    
+    # Parallel execution (max 5 workers for API rate limiting)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_pair, pair): pair for pair in pairs_to_fetch}
+        
+        for future in as_completed(futures):
+            try:
+                i, j, dist_m, time_s = future.result()
+                distance_matrix[i][j] = dist_m
+                distance_matrix[j][i] = dist_m
+                time_matrix[i][j] = time_s
+                time_matrix[j][i] = time_s
+            except Exception as e:
+                pair = futures[future]
+                i, j = pair
+                # Fallback to haversine
+                dist_km = haversine_distance(
+                    points[i]['latitude'], points[i]['longitude'],
+                    points[j]['latitude'], points[j]['longitude']
+                )
+                dist_m = int(dist_km * 1.5 * 1000)
+                time_s = int(estimate_travel_time(dist_km * 1.5))
+                distance_matrix[i][j] = dist_m
+                distance_matrix[j][i] = dist_m
+                time_matrix[i][j] = time_s
+                time_matrix[j][i] = time_s
+                print(f"  Pair ({i},{j}) fallback: {e}")
+    
+    # OVRP: School(0) → Student cost = 0 (open-ended routes)
+    for j in range(1, n):
+        distance_matrix[0][j] = 0
+        time_matrix[0][j] = 0
+    
+    # Save cache after building matrices
+    save_cache_to_file()
+    
+    print(f"Matrices built ({cache_hits[0]} cached, {api_calls[0]} API calls)")
+    return distance_matrix, time_matrix
 
 
 def get_real_route_geometry_for_segments(route_segments: List[Dict], api_key: str) -> List[Dict]:
@@ -706,7 +782,8 @@ def format_time(seconds_from_midnight: int) -> str:
 
 def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
                        distance_matrix, max_ride_time_minutes: int,
-                       vehicle_capacities: List[int] = None):
+                       vehicle_capacities: List[int] = None,
+                       time_matrix=None):
     """
     Build and return a CVRP model (manager, routing, callbacks) without solving.
     Shared by both Phase 1 and Phase 2 of two-phase solving.
@@ -795,14 +872,17 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
         fixed_cost = VEHICLE_FIXED_COST_BASE + capacity_penalty
         routing.SetFixedCostOfVehicle(fixed_cost, vehicle_id)
 
-    # Time constraint
+    # Time constraint — uses REAL travel times from API when available
     def time_callback(from_index, to_index):
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
         if from_node == 0 and to_node > 0:
-            return 60
-        distance_m = distance_matrix[from_node][to_node]
-        travel_time = estimate_travel_time(distance_m / 1000)
+            return 60  # Just pickup time for OVRP start
+        if time_matrix is not None:
+            travel_time = time_matrix[from_node][to_node]  # Real API time
+        else:
+            distance_m = distance_matrix[from_node][to_node]
+            travel_time = estimate_travel_time(distance_m / 1000)  # Fallback
         pickup_time = 60 if to_node > 0 else 0
         return int(travel_time + pickup_time)
     
@@ -810,10 +890,10 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
     
     max_ride_seconds = int(max_ride_time_minutes * 60)
 
-    # HARD CONSTRAINT: Time limit is strict, not soft
-    # Routes MUST be under the max_ride_time limit
-    # If infeasible with available fleet, solver will return no solution
-    max_hard_cap = max_ride_seconds  # Strict hard cap - no violations allowed
+    # HARD CONSTRAINT with safety buffer
+    # Use 75% of max ride time as hard cap (Haversine math) to guarantee 
+    # real-world post-processed paths easily fit the 60 min limit.
+    max_hard_cap = int(max_ride_seconds * 0.75)
 
     routing.AddDimension(
         time_callback_index, slack_max=1800, capacity=max_hard_cap,
@@ -822,14 +902,42 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
 
     time_dimension = routing.GetDimensionOrDie('Time')
 
-    # No soft upper bound needed - hard cap enforces the limit
     # Global span cost to minimize route duration spread
     time_dimension.SetGlobalSpanCostCoefficient(200)
+
+    # --- ADVANCED CONSTRAINTS ---
+    solver = routing.solver()
+
+    # 1. Sibling Constraint: Group students with the same family code
+    family_groups = {}
+    for i, student in enumerate(students):
+        fc = student.get('family_code')
+        if fc and str(fc).strip():
+            family_groups.setdefault(str(fc).strip(), []).append(i + 1)  # +1 because 0 is school
+            
+    for fc, members in family_groups.items():
+        if len(members) > 1:
+            first = members[0]
+            for other in members[1:]:
+                # Force siblings to be assigned to the same vehicle
+                solver.Add(routing.VehicleVar(first) == routing.VehicleVar(other))
+                
+    # 2. Special Needs Constraint: Restrict ride time to 30 mins (1800s)
+    special_needs_max_time = 1800
+    M = max_hard_cap * 2  # Big-M for implication
     
-    VEHICLE_FIXED_COST = 20000
-    for vehicle_id in range(num_vehicles):
-        routing.SetFixedCostOfVehicle(VEHICLE_FIXED_COST, vehicle_id)
-    
+    for i, student in enumerate(students):
+        if student.get('special_needs'):
+            node = i + 1
+            for v in range(num_vehicles):
+                # is_on_v will be 1 if student is on bus v, else 0
+                is_on_v = solver.IsEqualCstVar(routing.VehicleVar(node), v)
+                
+                # If on bus v, end_time - pickup_time <= 1800
+                # Using Big-M: end_time - pickup_time - 1800 <= M * (1 - is_on_v)
+                eq = time_dimension.CumulVar(routing.End(v)) - time_dimension.CumulVar(node)
+                solver.Add(eq - special_needs_max_time <= M * (1 - is_on_v))
+                
     return manager, routing, capacities
 
 
@@ -841,18 +949,21 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
     """
     Two-Phase CVRP solver:
       Phase 1 (5s): Quick solve with max vehicles → discover optimal bus count
-      Phase 2 (15s): Re-solve with exact bus count → better route quality
+      Phase 2 (30s): Re-solve with exact bus count → better route quality
+    Uses fast Haversine estimates for the solver Phase to improve speed.
     """
     if not students:
         return {'routes': [], 'total_distance': 0, 'total_time': 0}
     
+    # Use Haversine distance matrix for solver speed (per user request)
     distance_matrix = build_distance_matrix_fast(school, students)
+    time_matrix = None
     
     # ===== PHASE 1: Quick solve to discover bus count (5 seconds) =====
     print(f"\n--- Phase 1: Quick solve with {num_vehicles} vehicles (5s) ---")
     manager, routing, capacities = _build_cvrp_model(
         school, students, num_vehicles, distance_matrix,
-        max_ride_time_minutes, vehicle_capacities
+        max_ride_time_minutes, vehicle_capacities, time_matrix
     )
     
     search_params_p1 = pywrapcp.DefaultRoutingSearchParameters()
@@ -904,7 +1015,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
     
     manager, routing, capacities = _build_cvrp_model(
         school, students, optimal_vehicles, distance_matrix,
-        max_ride_time_minutes, p2_capacities
+        max_ride_time_minutes, p2_capacities, time_matrix
     )
     
     search_params_p2 = pywrapcp.DefaultRoutingSearchParameters()
@@ -914,7 +1025,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
     search_params_p2.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
-    search_params_p2.time_limit.seconds = 15
+    search_params_p2.time_limit.seconds = 30
     
     solution = routing.SolveWithParameters(search_params_p2)
     
@@ -924,7 +1035,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
         # Re-build with original count to extract Phase 1 solution
         manager, routing, capacities = _build_cvrp_model(
             school, students, num_vehicles, distance_matrix,
-            max_ride_time_minutes, vehicle_capacities
+            max_ride_time_minutes, vehicle_capacities, time_matrix
         )
         search_params_p1.time_limit.seconds = 5
         solution = routing.SolveWithParameters(search_params_p1)
@@ -977,6 +1088,10 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
                 if node_index == 0:
                     distance_km = 0
                     time_s = 0
+                elif time_matrix is not None:
+                    distance_m = distance_matrix[node_index][next_node]
+                    distance_km = distance_m / 1000
+                    time_s = time_matrix[node_index][next_node]  # Real API time
                 else:
                     distance_m = distance_matrix[node_index][next_node]
                     distance_km = distance_m / 1000
@@ -1010,11 +1125,13 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
                     })
 
             else:
-                # Return to school
                 from_point = students[node_index - 1] if node_index > 0 else school
                 distance_m = distance_matrix[node_index][0]
                 distance_km = distance_m / 1000
-                time_s = estimate_travel_time(distance_km)
+                if time_matrix is not None:
+                    time_s = time_matrix[node_index][0]  # Real API time
+                else:
+                    time_s = estimate_travel_time(distance_km)
                 
                 route_distance += distance_km
                 route_time += time_s
@@ -1447,14 +1564,12 @@ def analyze_student_clusters(students: List[Dict], school: Dict) -> Dict:
 def optimize_routes(school: Dict, students: List[Dict], max_buses: int, api_key: str, 
                     school_arrival_time: int = 27000, max_ride_time: int = 60,
                     fleet_capacities: List[int] = None) -> Dict:
-    # FORCE RESET API HEALTH AND CACHE on every run to prevent stuck "straight line" state
-    # This ensures if the user updates the API key, we immediately try again.
-    global _api_healthy, distance_cache, route_geometry_cache
+    # Reset API health flag in case the key was updated
+    # Cache is preserved across runs — only invalidated when school changes
+    global _api_healthy
     _api_healthy = True
-    distance_cache.clear()
-    route_geometry_cache.clear()
     
-    print(f"Optimize Routes: CACHE CLEARED. API Key Prefix: {api_key[:10]}... Len: {len(api_key)}")
+    print(f"Optimize Routes: API Key Prefix: {api_key[:10]}... Len: {len(api_key)}")
 
     """
     Optimize bus routes using Google OR-Tools CVRP solver
@@ -2053,3 +2168,95 @@ def _estimate_buses_for_time_constraint(school: Dict, students: List[Dict],
 
 
 # Remove old clustering function - OR-Tools handles this automatically
+
+def recalculate_manually_adjusted_routes(routes: List[Dict], school: Dict, api_key: str, 
+                                         school_arrival_time: int = 27000, max_ride_time_minutes: int = 60) -> List[Dict]:
+    """
+    Recalculates times and distances for manually modified routes (e.g. from drag & drop).
+    Takes a list of route dicts (with 'students' array defining the exact order).
+    """
+    recalculated_routes = []
+    
+    for route in routes:
+        students = route.get('students', [])
+        if not students:
+            continue
+            
+        new_route = route.copy()
+        segments = []
+        
+        # Build segments list: S1->S2, S2->S3, Sn->School
+        for i in range(len(students) - 1):
+            s1 = students[i]
+            s2 = students[i+1]
+            segments.append({
+                'from': {'lat': s1['latitude'], 'lng': s1['longitude']},
+                'to': {'lat': s2['latitude'], 'lng': s2['longitude']},
+                'student': s2['name']
+            })
+            
+        # Add return to school segment
+        last_s = students[-1]
+        segments.append({
+            'from': {'lat': last_s['latitude'], 'lng': last_s['longitude']},
+            'to': {'lat': school['latitude'], 'lng': school['longitude']},
+            'student': 'Return to School'
+        })
+        
+        # Use existing geometry fetcher
+        enriched_segments = get_real_route_geometry_for_segments(segments, api_key)
+        
+        real_time = 0
+        real_distance = 0
+        for seg in enriched_segments:
+            real_time += seg.get('time', 0)
+            real_distance += seg.get('distance', 0)
+            
+        # Add pickup dwell times (60s per student)
+        real_time += len(students) * 60
+        
+        # Calculate backward from school arrival to get individual pickup times
+        actual_departure_time = school_arrival_time - real_time
+        cumulative_real_time = 0
+        time_violations = []
+        max_student_ride_time = 0
+        
+        # The school -> first student segment cost is 0 in CVRP,
+        # so ride time starts at the first pickup.
+        
+        for i, s_data in enumerate(students):
+            # Calculate time to get to this student (i-1 to i)
+            if i > 0 and (i-1) < len(enriched_segments):
+                cumulative_real_time += enriched_segments[i-1].get('time', 0)
+                
+            actual_pickup_time = actual_departure_time + cumulative_real_time
+            ride_duration = school_arrival_time - actual_pickup_time
+            
+            cumulative_real_time += 60  # Dwell time
+            
+            s_data['pickup_time'] = format_time(int(actual_pickup_time))
+            s_data['ride_duration_minutes'] = round(ride_duration / 60, 1)
+            
+            max_student_ride_time = max(max_student_ride_time, ride_duration)
+            
+            # Use special_needs specific limit if applicable
+            time_limit = 30 * 60 if s_data.get('special_needs') else max_ride_time_minutes * 60
+            if ride_duration > time_limit:
+                time_violations.append({
+                    'student': s_data.get('name', 'Unknown'),
+                    'ride_minutes': round(ride_duration / 60, 1),
+                    'bus': new_route.get('bus_number', 0)
+                })
+                
+        new_route['segments'] = enriched_segments
+        new_route['distance_km'] = round(real_distance, 2)
+        new_route['time_seconds'] = round(real_time)
+        new_route['time_minutes'] = round(real_time / 60, 1)
+        new_route['departure_time'] = format_time(int(actual_departure_time))
+        new_route['time_violations'] = time_violations
+        new_route['max_ride_minutes'] = round(max_student_ride_time / 60, 1)
+        
+        recalculated_routes.append(new_route)
+        
+    save_cache_to_file()
+    return recalculated_routes

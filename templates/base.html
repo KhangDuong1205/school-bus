@@ -219,6 +219,115 @@
             display: none;
         }
 
+        /* === SCHOOL LOCATION BANNER === */
+        .school-banner {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .app-sidebar.collapsed .school-banner {
+            display: none;
+        }
+
+        .school-banner-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .school-banner-header:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .school-banner-header .banner-icon {
+            font-size: 1rem;
+        }
+
+        .school-banner-header .banner-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 700;
+            color: var(--text-muted);
+            flex: 1;
+        }
+
+        .school-banner-header .banner-chevron {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            transition: transform 0.3s ease;
+        }
+
+        .school-banner.collapsed .banner-chevron {
+            transform: rotate(-90deg);
+        }
+
+        .school-banner-body {
+            padding: 0 14px 12px 14px;
+            transition: max-height 0.3s ease, opacity 0.2s ease, padding 0.3s ease;
+            max-height: 120px;
+            opacity: 1;
+            overflow: hidden;
+        }
+
+        .school-banner.collapsed .school-banner-body {
+            max-height: 0;
+            opacity: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        .school-banner-card {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(52, 211, 153, 0.08));
+            border: 1px solid rgba(52, 211, 153, 0.25);
+            border-radius: 8px;
+            padding: 10px 12px;
+            text-decoration: none;
+            display: block;
+            transition: all 0.2s;
+        }
+
+        .school-banner-card:hover {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(52, 211, 153, 0.15));
+            transform: translateY(-1px);
+        }
+
+        .school-banner-card.not-set {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.08));
+            border-color: rgba(251, 191, 36, 0.3);
+        }
+
+        .school-banner-card.not-set:hover {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(245, 158, 11, 0.15));
+        }
+
+        .school-banner-name {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #a7f3d0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .school-banner-card.not-set .school-banner-name {
+            color: #fcd34d;
+        }
+
+        .school-banner-address {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
         /* === MAIN CONTENT AREA === */
         .app-main {
             flex: 1;
@@ -255,9 +364,13 @@
 
             <nav class="sidebar-nav">
                 <div class="nav-category">Main</div>
-                <a href="/" class="nav-item {% if active_page == 'planning' %}active{% endif %}">
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
                     <span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span>
                     <span>Route Planning</span>
+                </a>
+                <a href="/export-data" class="nav-item {% if request.path == '/export-data' %}active{% endif %}">
+                    <span class="nav-icon"><i class="fas fa-table"></i></span>
+                    <span>Results Table</span>
                 </a>
 
                 <div class="nav-category">Fleet Management</div>
@@ -269,14 +382,32 @@
                     <span class="nav-icon"><i class="fas fa-bus"></i></span>
                     <span>Vehicles (Fleet)</span>
                 </a>
+                <a href="/students" class="nav-item {% if active_page == 'students' %}active{% endif %}">
+                    <span class="nav-icon"><i class="fas fa-user-graduate"></i></span>
+                    <span>Students</span>
+                </a>
 
                 <div class="nav-category">Settings</div>
-                <!-- Future link -->
-                <a href="#" class="nav-item" style="opacity: 0.5; cursor: not-allowed;">
+                <a href="/settings" class="nav-item {% if active_page == 'settings' %}active{% endif %}">
                     <span class="nav-icon"><i class="fas fa-cog"></i></span>
                     <span>Settings</span>
                 </a>
             </nav>
+
+            <!-- School Location Banner (collapsible) -->
+            <div class="school-banner" id="schoolBanner">
+                <div class="school-banner-header" onclick="toggleSchoolBanner()">
+                    <span class="banner-icon">🏫</span>
+                    <span class="banner-label">Active School</span>
+                    <i class="fas fa-chevron-down banner-chevron"></i>
+                </div>
+                <div class="school-banner-body">
+                    <a href="/settings" class="school-banner-card not-set" id="schoolBannerCard">
+                        <div class="school-banner-name" id="schoolBannerName">No school set</div>
+                        <div class="school-banner-address" id="schoolBannerAddress">Click to set in Settings</div>
+                    </a>
+                </div>
+            </div>
 
             <div class="sidebar-footer">
                 v1.0.0 Alpha
@@ -294,6 +425,37 @@
             const sidebar = document.getElementById('appSidebar');
             sidebar.classList.toggle('collapsed');
         }
+
+        function toggleSchoolBanner() {
+            const banner = document.getElementById('schoolBanner');
+            banner.classList.toggle('collapsed');
+            // Remember state
+            localStorage.setItem('schoolBannerCollapsed', banner.classList.contains('collapsed'));
+        }
+
+        // Load school info into sidebar banner on every page
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Restore collapsed state
+            if (localStorage.getItem('schoolBannerCollapsed') === 'true') {
+                document.getElementById('schoolBanner').classList.add('collapsed');
+            }
+
+            try {
+                const res = await fetch('/api/school');
+                const school = await res.json();
+                const card = document.getElementById('schoolBannerCard');
+                const nameEl = document.getElementById('schoolBannerName');
+                const addrEl = document.getElementById('schoolBannerAddress');
+
+                if (school && school.latitude && (school.latitude !== 0 || school.longitude !== 0)) {
+                    card.classList.remove('not-set');
+                    nameEl.textContent = school.name || 'School';
+                    addrEl.textContent = school.address || `${school.latitude.toFixed(4)}, ${school.longitude.toFixed(4)}`;
+                }
+            } catch (e) {
+                console.error('Failed to load school banner:', e);
+            }
+        });
     </script>
     {% block scripts %}{% endblock %}
 </body>

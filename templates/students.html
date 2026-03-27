@@ -1,0 +1,588 @@
+{% extends "base.html" %}
+
+{% block title %}Students - School Bus Route Planner{% endblock %}
+{% block active_page %}students{% endblock %}
+
+{% block head %}
+<style>
+    /* CONTENT HEADER */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding: 30px 40px 0;
+    }
+
+    .page-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .page-desc {
+        color: #64748b;
+        margin-top: 5px;
+        font-size: 0.9rem;
+    }
+
+    /* CONTENT BODY */
+    .content-body {
+        padding: 20px 40px;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    /* TOOLBAR */
+    .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    /* FILTER BUTTONS */
+    .filter-btn {
+        padding: 6px 14px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: white;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+        color: #475569;
+    }
+
+    .filter-btn:hover,
+    .filter-btn.active {
+        background: #3b82f6;
+        color: white;
+        border-color: #3b82f6;
+    }
+
+    /* SEARCH / ADD FORM */
+    .add-student-bar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+    }
+
+    .add-student-bar input {
+        padding: 8px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        color: #334155;
+    }
+
+    .add-student-bar .name-input {
+        width: 180px;
+    }
+
+    .add-student-bar .address-input {
+        flex: 1;
+        position: relative;
+    }
+
+    .add-student-bar .family-input {
+        width: 100px;
+    }
+
+    .add-student-bar .special-needs-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.85rem;
+        color: #475569;
+        cursor: pointer;
+    }
+
+    .add-student-bar .address-input input {
+        width: 100%;
+    }
+
+    .autocomplete-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        max-height: 240px;
+        overflow-y: auto;
+        z-index: 2000;
+        border-radius: 0 0 8px 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .autocomplete-item {
+        padding: 10px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 0.9rem;
+    }
+
+    .autocomplete-item:hover {
+        background: #f1f5f9;
+    }
+
+    /* TABLE STYLES */
+    .data-table {
+        width: 100%;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e2e8f0;
+        border-collapse: collapse;
+    }
+
+    .data-table th {
+        background: #f8fafc;
+        padding: 14px 20px;
+        text-align: left;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .data-table td {
+        padding: 12px 20px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        font-size: 0.9rem;
+    }
+
+    .data-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .data-table tr:hover {
+        background: #f8fafc;
+    }
+
+    /* STATUS BADGES */
+    .status-tag {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .status-assigned {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .status-unassigned {
+        background: #f1f5f9;
+        color: #64748b;
+    }
+
+    /* BUTTONS */
+    .btn-primary {
+        background: #0ea5e9;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+    }
+
+    .btn-primary:hover {
+        background: #0284c7;
+    }
+
+    .btn-add {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+    }
+
+    .btn-add:hover {
+        background: #2563eb;
+    }
+
+    .btn-csv {
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+    }
+
+    .btn-csv:hover {
+        background: #059669;
+    }
+
+    .btn-delete {
+        color: #ef4444;
+        border: none;
+        background: none;
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: background 0.2s;
+    }
+
+    .btn-delete:hover {
+        background: #fef2f2;
+    }
+
+    /* SUMMARY BAR */
+    .summary-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 20px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        margin-top: 16px;
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+
+    /* MESSAGE */
+    .message {
+        font-size: 0.8rem;
+        margin-top: 6px;
+        min-height: 1.2em;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title"><i class="fas fa-user-graduate" style="color: #3b82f6; margin-right: 8px;"></i>Students</h1>
+        <p class="page-desc">Manage student records, add new students, and load from CSV.</p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn-csv" onclick="loadStudentsFromCSV()">
+            <i class="fas fa-file-csv"></i> Load CSV
+        </button>
+    </div>
+</div>
+
+<div class="content-body">
+
+    <!-- Add Student Bar -->
+    <div class="add-student-bar">
+        <input type="text" id="studentName" class="name-input" placeholder="Student Name">
+        <div class="address-input">
+            <input type="text" id="addressSearch" placeholder="Search address...">
+            <div id="autocompleteDropdown" class="autocomplete-dropdown" style="display: none;"></div>
+        </div>
+        <input type="text" id="familyCode" class="family-input" placeholder="Family Code" title="Optional: Group siblings together">
+        <label class="special-needs-wrap" title="Student requires shorter ride time">
+            <input type="checkbox" id="specialNeeds"> Special Needs
+        </label>
+        <button class="btn-add" id="searchBtn">
+            <i class="fas fa-plus"></i> Add
+        </button>
+    </div>
+    <div id="message" class="message"></div>
+
+    <!-- Toolbar (Filters + Count) -->
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <span style="font-size: 0.85rem; color: #64748b; font-weight: 500;">Filter:</span>
+            <button class="filter-btn active" onclick="filterStudents('all', this)">All</button>
+            <button class="filter-btn" onclick="filterStudents('assigned', this)">Assigned</button>
+            <button class="filter-btn" onclick="filterStudents('unassigned', this)">Unassigned</button>
+        </div>
+        <div class="toolbar-right">
+            <span id="selectedCount" style="font-size: 0.85rem; color: #64748b;"></span>
+        </div>
+    </div>
+
+    <!-- Students Table -->
+    <table class="data-table" id="studentsTable">
+        <thead>
+            <tr>
+                <th style="width: 40px;"><input type="checkbox" id="selectAllStudents" onclick="toggleSelectAll()"></th>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Address</th>
+                <th>Family Code</th>
+                <th>Special Needs</th>
+                <th>Status</th>
+                <th style="width: 60px; text-align: right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody id="studentsTableBody">
+            <tr>
+                <td colspan="8" style="text-align:center; padding: 40px; color: #94a3b8;">Loading...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Summary -->
+    <div class="summary-bar">
+        <span>Total: <strong><span id="totalStudents">0</span></strong> students</span>
+        <span id="assignmentSummary" style="color: #10b981;">0 assigned</span>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let searchTimeout;
+    let selectedAddress = null;
+    let allStudentsData = [];
+    let studentClusterMap = {};  // Will be empty on this page (cluster data is on Route Planning page)
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStudents();
+        setupSearch();
+    });
+
+    // ---- Load & Render Students ----
+    async function loadStudents() {
+        try {
+            const res = await fetch('/api/students');
+            const students = await res.json();
+            allStudentsData = students;
+            renderStudents(students);
+            document.getElementById('totalStudents').innerText = students.length;
+        } catch (e) { console.error(e); }
+    }
+
+    function renderStudents(students) {
+        const tbody = document.getElementById('studentsTableBody');
+
+        if (students.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:40px;">No students loaded. Use "Load CSV" or add manually.</td></tr>';
+            return;
+        }
+
+        // Sort alphabetically
+        students.sort((a, b) => a.name.localeCompare(b.name));
+
+        let assignedCount = 0;
+
+        tbody.innerHTML = students.map(s => {
+            const clusterInfo = studentClusterMap[s.name];
+            const isAssigned = clusterInfo !== undefined;
+            if (isAssigned) assignedCount++;
+
+            const statusClass = isAssigned ? 'status-assigned' : 'status-unassigned';
+            const statusText = isAssigned ? 'Assigned' : 'Unassigned';
+
+            return `
+                <tr data-id="${s.id}" data-status="${isAssigned ? 'assigned' : 'unassigned'}">
+                    <td><input type="checkbox" class="student-checkbox" value="${s.id}"></td>
+                    <td>
+                        <div style="font-weight: 600; color: #0369a1;">${escapeHtml(s.student_id || 'S' + s.id)}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 500;">${escapeHtml(s.name)}</div>
+                    </td>
+                    <td>
+                        <div style="color: #64748b; font-size: 0.85rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${escapeHtml(s.address)}
+                        </div>
+                    </td>
+                    <td>
+                        <div style="font-size: 0.85rem; color: #475569;">${escapeHtml(s.family_code || '-')}</div>
+                    </td>
+                    <td>
+                        ${s.special_needs ? '<span style="color:#ef4444; font-size: 0.85rem;"><i class="fas fa-heart"></i> Yes</span>' : '<span style="color:#94a3b8; font-size: 0.85rem;">No</span>'}
+                    </td>
+                    <td><span class="status-tag ${statusClass}">${statusText}</span></td>
+                    <td style="text-align: right;">
+                        <button class="btn-delete" onclick="deleteStudent(${s.id})" title="Remove student">&times;</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        document.getElementById('totalStudents').innerText = students.length;
+        document.getElementById('assignmentSummary').innerHTML = `<span style="color: #10b981;">${assignedCount} assigned</span>`;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.innerText = text;
+        return div.innerHTML;
+    }
+
+    // ---- Filter ----
+    function filterStudents(filter, btn) {
+        // Update active button
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+
+        const rows = document.querySelectorAll('#studentsTableBody tr');
+        rows.forEach(row => {
+            const status = row.dataset.status;
+            if (!status) return; // skip placeholder rows
+            if (filter === 'all') {
+                row.style.display = '';
+            } else if (filter === status) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    // ---- Select All ----
+    function toggleSelectAll() {
+        const selectAll = document.getElementById('selectAllStudents').checked;
+        document.querySelectorAll('.student-checkbox').forEach(cb => cb.checked = selectAll);
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        const count = document.querySelectorAll('.student-checkbox:checked').length;
+        document.getElementById('selectedCount').innerText = count > 0 ? `${count} selected` : '';
+    }
+
+    // ---- Delete ----
+    async function deleteStudent(id) {
+        if (!confirm('Remove this student?')) return;
+        await fetch(`/api/students/${id}`, { method: 'DELETE' });
+        loadStudents();
+    }
+
+    // ---- CSV Load ----
+    async function loadStudentsFromCSV() {
+        const btn = document.querySelector('button[onclick="loadStudentsFromCSV()"]');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/load-students-csv', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert(`Loaded ${data.loaded} new students!`);
+                loadStudents();
+            }
+        } catch (e) {
+            alert('Error loading CSV');
+        } finally {
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+        }
+    }
+
+    // ---- Address Search & Add Student ----
+    function setupSearch() {
+        const input = document.getElementById('addressSearch');
+        const dropdown = document.getElementById('autocompleteDropdown');
+
+        input.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const val = e.target.value;
+            if (val.length < 3) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                const res = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ searchVal: val })
+                });
+                const data = await res.json();
+
+                if (data.results && data.results.length > 0) {
+                    dropdown.innerHTML = data.results.map(r => `
+                        <div class="autocomplete-item" onclick='selectAddress(${JSON.stringify(r).replace(/'/g, "&#39;")})'>
+                            <div style="font-weight:600;">${r.SEARCHVAL}</div>
+                            <div style="font-size:0.8rem; color:#666;">${r.ADDRESS}</div>
+                        </div>
+                    `).join('');
+                    dropdown.style.display = 'block';
+                }
+            }, 500);
+        });
+
+        document.getElementById('searchBtn').onclick = async () => {
+            if (!selectedAddress) return alert('Search and select an address first');
+            const name = document.getElementById('studentName').value || 'New Student';
+            const familyCode = document.getElementById('familyCode').value || '';
+            const specialNeeds = document.getElementById('specialNeeds').checked;
+
+            await fetch('/api/students', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    address: selectedAddress.ADDRESS,
+                    postal: selectedAddress.POSTAL,
+                    latitude: selectedAddress.LATITUDE,
+                    longitude: selectedAddress.LONGITUDE,
+                    family_code: familyCode,
+                    special_needs: specialNeeds
+                })
+            });
+
+            document.getElementById('studentName').value = '';
+            document.getElementById('addressSearch').value = '';
+            document.getElementById('familyCode').value = '';
+            document.getElementById('specialNeeds').checked = false;
+            selectedAddress = null;
+            dropdown.style.display = 'none';
+            loadStudents();
+        };
+    }
+
+    window.selectAddress = function(addr) {
+        selectedAddress = addr;
+        document.getElementById('addressSearch').value = addr.SEARCHVAL;
+        document.getElementById('autocompleteDropdown').style.display = 'none';
+    }
+</script>
+{% endblock %}

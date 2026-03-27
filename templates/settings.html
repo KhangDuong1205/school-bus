@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - School Bus Route Planner{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    .settings-container {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 24px;
+        overflow-y: auto;
+        height: 100%;
+    }
+
+    .settings-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 8px;
+    }
+
+    .settings-subtitle {
+        font-size: 0.9rem;
+        color: #64748b;
+        margin-bottom: 32px;
+    }
+
+    .settings-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+
+    .card-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #334155;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .card-description {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-bottom: 16px;
+    }
+
+    .search-wrapper {
+        position: relative;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 12px 16px 12px 40px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        color: #334155;
+        transition: border-color 0.2s;
+        outline: none;
+    }
+
+    .search-input:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        font-size: 0.9rem;
+    }
+
+    .autocomplete-list {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 0 0 8px 8px;
+        max-height: 260px;
+        overflow-y: auto;
+        z-index: 100;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        display: none;
+    }
+
+    .autocomplete-item {
+        padding: 10px 16px;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f5f9;
+        transition: background 0.15s;
+    }
+
+    .autocomplete-item:hover {
+        background: #eff6ff;
+    }
+
+    .autocomplete-item:last-child {
+        border-bottom: none;
+    }
+
+    .autocomplete-item .item-name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #1e293b;
+    }
+
+    .autocomplete-item .item-address {
+        font-size: 0.75rem;
+        color: #64748b;
+        margin-top: 2px;
+    }
+
+    .current-school {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 16px;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 8px;
+    }
+
+    .current-school.not-set {
+        background: #fef3c7;
+        border-color: #fcd34d;
+    }
+
+    .current-school .school-icon {
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+
+    .current-school .school-details {
+        flex: 1;
+    }
+
+    .current-school .school-name {
+        font-weight: 600;
+        color: #166534;
+        font-size: 0.95rem;
+    }
+
+    .current-school.not-set .school-name {
+        color: #92400e;
+    }
+
+    .current-school .school-address {
+        font-size: 0.8rem;
+        color: #4ade80;
+        margin-top: 2px;
+    }
+
+    .current-school .school-coords {
+        font-size: 0.7rem;
+        color: #94a3b8;
+        margin-top: 4px;
+        font-family: monospace;
+    }
+
+    #schoolPreviewMap {
+        width: 100%;
+        height: 240px;
+        border-radius: 8px;
+        margin-top: 16px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .success-toast {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        background: #10b981;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        transform: translateY(-20px);
+        opacity: 0;
+        transition: all 0.3s ease;
+    }
+
+    .success-toast.show {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    .clear-btn {
+        margin-top: 12px;
+        padding: 8px 16px;
+        background: #fee2e2;
+        color: #dc2626;
+        border: 1px solid #fca5a5;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .clear-btn:hover {
+        background: #fecaca;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <h1 class="settings-title"><i class="fas fa-cog" style="color:#64748b;"></i> Settings</h1>
+    <p class="settings-subtitle">Configure your school location for route planning. Only one school is active at a time.
+    </p>
+
+    <!-- Current School Card -->
+    <div class="settings-card">
+        <div class="card-title"><i class="fas fa-school" style="color:#10b981;"></i> Current School</div>
+        <div class="card-description">The school all bus routes will drive to.</div>
+
+        <div id="currentSchoolDisplay" class="current-school not-set">
+            <div class="school-icon">🏫</div>
+            <div class="school-details">
+                <div class="school-name">No school set</div>
+                <div class="school-address" style="color:#b45309;">Search below to set a school location.</div>
+            </div>
+        </div>
+
+        <div id="schoolPreviewMap" style="display:none;"></div>
+
+        <button id="clearSchoolBtn" class="clear-btn" style="display:none;" onclick="clearSchool()">
+            <i class="fas fa-times"></i> Clear School Location
+        </button>
+    </div>
+
+    <!-- Set School Card -->
+    <div class="settings-card">
+        <div class="card-title"><i class="fas fa-search-location" style="color:#3b82f6;"></i> Set School Location</div>
+        <div class="card-description">Search for your school using the OneMap address search.</div>
+
+        <div class="search-wrapper">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="schoolSearch" class="search-input" placeholder="Search school name or address..."
+                autocomplete="off">
+            <div id="searchResults" class="autocomplete-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Toast -->
+<div id="successToast" class="success-toast">
+    <i class="fas fa-check-circle"></i> School location updated!
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let previewMap = null;
+    let previewMarker = null;
+    let searchTimeout = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCurrentSchool();
+        setupSearchListener();
+    });
+
+    // Load current school from API
+    async function loadCurrentSchool() {
+        try {
+            const res = await fetch('/api/school');
+            const school = await res.json();
+
+            if (school && school.latitude) {
+                displaySchool(school);
+            }
+        } catch (e) {
+            console.error('Error loading school:', e);
+        }
+    }
+
+    // Display school in the UI
+    function displaySchool(school) {
+        const display = document.getElementById('currentSchoolDisplay');
+        const mapDiv = document.getElementById('schoolPreviewMap');
+        const clearBtn = document.getElementById('clearSchoolBtn');
+
+        display.className = 'current-school';
+        display.innerHTML = `
+            <div class="school-icon">🏫</div>
+            <div class="school-details">
+                <div class="school-name">${school.name || 'School'}</div>
+                <div class="school-address" style="color:#15803d;">${school.address || 'Address not available'}</div>
+                <div class="school-coords">${school.latitude.toFixed(6)}, ${school.longitude.toFixed(6)}</div>
+            </div>
+        `;
+
+        // Show map and clear button
+        mapDiv.style.display = 'block';
+        clearBtn.style.display = 'inline-block';
+
+        // Initialize or update map
+        setTimeout(() => {
+            if (!previewMap) {
+                previewMap = L.map('schoolPreviewMap').setView([school.latitude, school.longitude], 16);
+                L.tileLayer('https://www.onemap.gov.sg/maps/tiles/Default/{z}/{x}/{y}.png', {
+                    attribution: '© Singapore Land Authority, OneMap',
+                    maxZoom: 19
+                }).addTo(previewMap);
+            } else {
+                previewMap.setView([school.latitude, school.longitude], 16);
+            }
+
+            if (previewMarker) previewMap.removeLayer(previewMarker);
+            previewMarker = L.marker([school.latitude, school.longitude], {
+                icon: L.divIcon({
+                    className: 'school-icon-marker',
+                    html: '<div style="font-size:28px;">🏫</div>',
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
+                })
+            }).addTo(previewMap);
+
+            previewMap.invalidateSize();
+        }, 100);
+    }
+
+    // Set up the search input listener
+    function setupSearchListener() {
+        const input = document.getElementById('schoolSearch');
+        const results = document.getElementById('searchResults');
+
+        input.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            const val = input.value.trim();
+
+            if (val.length < 2) {
+                results.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const res = await fetch('/api/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ searchVal: val })
+                    });
+                    const data = await res.json();
+
+                    if (data.results && data.results.length > 0) {
+                        results.innerHTML = data.results.map(r => `
+                            <div class="autocomplete-item"
+                                 onclick='selectSchool(${JSON.stringify(r).replace(/'/g, "&#39;")})'>
+                                <div class="item-name">${r.BUILDING || r.SEARCHVAL || r.ADDRESS}</div>
+                                <div class="item-address">${r.ADDRESS}</div>
+                            </div>
+                        `).join('');
+                        results.style.display = 'block';
+                    } else {
+                        results.innerHTML = '<div style="padding:12px; color:#94a3b8; text-align:center; font-size:0.85rem;">No results found</div>';
+                        results.style.display = 'block';
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }, 300);
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-wrapper')) {
+                results.style.display = 'none';
+            }
+        });
+    }
+
+    // Select a school from search results
+    async function selectSchool(result) {
+        const school = {
+            name: result.BUILDING || result.SEARCHVAL || 'School',
+            address: result.ADDRESS,
+            postal: result.POSTAL || '',
+            latitude: parseFloat(result.LATITUDE),
+            longitude: parseFloat(result.LONGITUDE)
+        };
+
+        try {
+            const res = await fetch('/api/school', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(school)
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                displaySchool(school);
+                document.getElementById('schoolSearch').value = '';
+                document.getElementById('searchResults').style.display = 'none';
+                showToast();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Failed to set school location');
+        }
+    }
+
+    // Clear the school location
+    async function clearSchool() {
+        if (!confirm('Clear the current school location?')) return;
+
+        try {
+            // Set to null by sending empty coordinates won't work, so we just reset on frontend
+            // Actually, let's set it server-side by sending a special request
+            const res = await fetch('/api/school', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ latitude: 0, longitude: 0, name: '', address: '' })
+            });
+
+            // Reset UI
+            const display = document.getElementById('currentSchoolDisplay');
+            display.className = 'current-school not-set';
+            display.innerHTML = `
+                <div class="school-icon">🏫</div>
+                <div class="school-details">
+                    <div class="school-name">No school set</div>
+                    <div class="school-address" style="color:#b45309;">Search below to set a school location.</div>
+                </div>
+            `;
+            document.getElementById('schoolPreviewMap').style.display = 'none';
+            document.getElementById('clearSchoolBtn').style.display = 'none';
+
+            if (previewMap) {
+                previewMap.remove();
+                previewMap = null;
+                previewMarker = null;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    // Show success toast
+    function showToast() {
+        const toast = document.getElementById('successToast');
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+</script>
+{% endblock %}
