@@ -14,6 +14,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import time
 from threading import Lock
+from onemap_utils import get_onemap_token
   
 # Cache file path (in same directory as this script)
 CACHE_FILE = os.path.join(os.path.dirname(__file__), 'route_cache.json')
@@ -154,10 +155,15 @@ def get_route_from_onemap(start_lat: float, start_lng: float, end_lat: float, en
     
     # Check cache first
     if cache_key in distance_cache:
-        # print(f"  Cache hit: {cache_key}")
-        return distance_cache[cache_key]
+        cached_result = distance_cache[cache_key]
+        # VALIDATION: If the cached geometry is just 2 points (straight line), 
+        # it was likely a previous failure. Re-fetch if API is healthy.
+        if len(cached_result[2]) > 2 or not _api_healthy:
+            return cached_result
+        else:
+            print(f"  Found straight line in cache for {cache_key}, re-fetching...", flush=True)
 
-    print(f"  API Fetch: {cache_key} | Healthy: {_api_healthy}")
+    print(f"  API Fetch: {cache_key} | Healthy: {_api_healthy}", flush=True)
     
     # Skip API if a previous call already failed with auth error
     if not _api_healthy:
@@ -198,57 +204,52 @@ def get_route_from_onemap(start_lat: float, start_lng: float, end_lat: float, en
                     # Decode route geometry
                     geometry = decode_polyline(data['route_geometry'])
                     
-                    result = (distance_m / 1000, time_s, geometry)
-                    
-                    # Cache the result (batch-saved later, not per-call)
-                    distance_cache[cache_key] = result
-                    print(f"  API success: {distance_m}m, {len(geometry)} pts. First: {geometry[0] if geometry else 'None'}")
-                    
-                    return result
+                    if len(geometry) > 2:
+                        result = (distance_m / 1000, time_s, geometry)
+                        distance_cache[cache_key] = result
+                        print(f"  API success: {distance_m}m, {len(geometry)} pts.", flush=True)
+                        return result
+                    else:
+                        print(f"  API returned straight line, retry {attempt+1}...", flush=True)
             else:
-                print(f"  API FAIL: Status {response.status_code}. Response: {response.text[:200]}")
+                print(f"  API FAIL: Status {response.status_code}. Response: {response.text[:200]}", flush=True)
             
             # If we get here, API returned non-200 or invalid data
             if response.status_code in (401, 403):
                 # Auth failure — don't retry, mark API as unhealthy
-                print(f"  API auth failed ({response.status_code}) — switching to haversine for all remaining calls")
+                print(f"  API auth failed ({response.status_code}) — switching to haversine", flush=True)
                 _api_healthy = False
                 break
             
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt
-                print(f"  Retry ({attempt + 1}/{max_retries}): status {response.status_code}")
+                print(f"  Retry ({attempt + 1}/{max_retries}): status {response.status_code}", flush=True)
                 time.sleep(wait_time)
             
         except requests.exceptions.Timeout:
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt
-                print(f"  Retry ({attempt + 1}/{max_retries}): timeout")
+                print(f"  Retry ({attempt + 1}/{max_retries}): timeout", flush=True)
                 time.sleep(wait_time)
             else:
-                print(f"  Failed: timeout after {max_retries} attempts")
+                print(f"  Failed: timeout after {max_retries} attempts", flush=True)
         
         except Exception as e:
             if attempt < max_retries - 1:
                 wait_time = 2 ** attempt
-                print(f"  Retry ({attempt + 1}/{max_retries}): {e}")
+                print(f"  Retry ({attempt + 1}/{max_retries}): {e}", flush=True)
                 time.sleep(wait_time)
             else:
-                print(f"  Failed after {max_retries} attempts: {e}")
-                # Log detailed error for debugging
-                print(f"  DEBUG FAILURE: {cache_key} -> {e}")
+                print(f"  Failed after {max_retries} attempts: {e}", flush=True)
     
     # Fallback to haversine estimation with straight line
-    print(f"  Fallback to haversine: {cache_key}")
+    print(f"  Fallback to haversine: {cache_key}", flush=True)
     distance = haversine_distance(start_lat, start_lng, end_lat, end_lng)
     time_est = estimate_travel_time(distance)
     geometry = [[start_lat, start_lng], [end_lat, end_lng]]
     
     result = (distance, time_est, geometry)
-    
-    # Cache the fallback result too
     distance_cache[cache_key] = result
-    
     return result
 
 
@@ -304,7 +305,7 @@ def build_distance_matrix_fast(school: Dict, students: List[Dict]) -> List[List[
     n = len(points)
     distance_matrix = [[0] * n for _ in range(n)]
     
-    print(f"Building distance matrix for {n} points (haversine)...")
+    print(f"Building distance matrix for {n} points (haversine)...", flush=True)
     
     for i in range(n):
         for j in range(i + 1, n):
@@ -323,7 +324,7 @@ def build_distance_matrix_fast(school: Dict, students: List[Dict]) -> List[List[
             distance_matrix[i][j] = distance_m
             distance_matrix[j][i] = distance_m
     
-    print("Distance matrix built")
+    print("Distance matrix built", flush=True)
     return distance_matrix
 
 
@@ -341,7 +342,7 @@ def build_distance_and_time_matrices(school: Dict, students: List[Dict], api_key
     distance_matrix = [[0] * n for _ in range(n)]
     time_matrix = [[0] * n for _ in range(n)]
     
-    print(f"Building distance + time matrices for {n} points (real API data)...")
+    print(f"Building distance + time matrices for {n} points (real API data)...", flush=True)
     
     # Collect all pairs
     pairs_to_fetch = []
@@ -369,7 +370,7 @@ def build_distance_and_time_matrices(school: Dict, students: List[Dict], api_key
         
         completed[0] += 1
         if completed[0] % 50 == 0:
-            print(f"  Progress: {completed[0]}/{total_pairs} ({cache_hits[0]} cached, {api_calls[0]} API)")
+            print(f"  Progress: {completed[0]}/{total_pairs} ({cache_hits[0]} cached, {api_calls[0]} API)", flush=True)
         
         return (i, j, int(dist_km * 1000), int(time_s))
     
@@ -398,7 +399,7 @@ def build_distance_and_time_matrices(school: Dict, students: List[Dict], api_key
                 distance_matrix[j][i] = dist_m
                 time_matrix[i][j] = time_s
                 time_matrix[j][i] = time_s
-                print(f"  Pair ({i},{j}) fallback: {e}")
+                print(f"  Pair ({i},{j}) fallback: {e}", flush=True)
     
     # OVRP: School(0) → Student cost = 0 (open-ended routes)
     for j in range(1, n):
@@ -408,7 +409,7 @@ def build_distance_and_time_matrices(school: Dict, students: List[Dict], api_key
     # Save cache after building matrices
     save_cache_to_file()
     
-    print(f"Matrices built ({cache_hits[0]} cached, {api_calls[0]} API calls)")
+    print(f"Matrices built ({cache_hits[0]} cached, {api_calls[0]} API calls)", flush=True)
     return distance_matrix, time_matrix
 
 
@@ -416,17 +417,15 @@ def get_real_route_geometry_for_segments(route_segments: List[Dict], api_key: st
     """
     Get real road geometry from OneMap for route segments
     Called AFTER optimization to display real roads on map
-    Uses parallel processing for speed
     """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    print(f"Fetching road geometry for {len(route_segments)} segments using OneMap...", flush=True)
     
-    print(f"Fetching road geometry for {len(route_segments)} segments...")
-    
-    def fetch_segment(segment):
+    enriched_segments = []
+    for i, segment in enumerate(route_segments):
+        # Sequential processing with small delay to strictly respect rate limits
+        # and ensure prints are flushed to CMD
+        time.sleep(0.2)
         try:
-            # Debug: Print keys to see what we actually have
-            # print(f"DEBUG Seg: from keys={list(segment['from'].keys())}", flush=True)
-            
             p_from = segment['from']
             p_to = segment['to']
             
@@ -436,55 +435,28 @@ def get_real_route_geometry_for_segments(route_segments: List[Dict], api_key: st
             to_lng = p_to.get('lng') or p_to.get('longitude')
             
             if not from_lat or not from_lng or not to_lat or not to_lng:
-                print(f"  SEGMENT ERROR: Missing coords! From: {p_from}, To: {p_to}", flush=True)
-                raise ValueError("Missing coordinates")
+                print(f"  SEGMENT ERROR: Missing coords for index {i}", flush=True)
+                enriched_segments.append(segment)
+                continue
 
+            print(f"  Fetching segment {i+1}/{len(route_segments)}...", end="\r", flush=True)
+            
             # Get real route from OneMap
             distance_km, time_s, geometry = get_route_from_onemap(
                 from_lat, from_lng, to_lat, to_lng, api_key
             )
-            
-            # VALIDATION: Check for major distance mismatch
-            hav_dist = haversine_distance(from_lat, from_lng, to_lat, to_lng)
-            if hav_dist > 0.5 and abs(distance_km - hav_dist) > 5.0:
-                print(f"  WARNING: Major distance mismatch! Seg: {segment.get('student', 'Unknown')}")
-                print(f"    Req: {from_lat},{from_lng} -> {to_lat},{to_lng}")
-                print(f"    Haversine: {hav_dist:.2f}km, API: {distance_km:.2f}km")
-                print(f"    Geometry pts: {len(geometry)}")
-                if geometry:
-                    first_pt = geometry[0]
-                    last_pt = geometry[-1]
-                    start_diff = haversine_distance(from_lat, from_lng, first_pt[0], first_pt[1])
-                    end_diff = haversine_distance(to_lat, to_lng, last_pt[0], last_pt[1])
-                    print(f"    Start Diff: {start_diff:.2f}km, End Diff: {end_diff:.2f}km")
             
             # Update segment with real data
             segment['geometry'] = geometry
             segment['distance'] = distance_km
             segment['time'] = time_s
             
-            return segment
+            enriched_segments.append(segment)
         except Exception as e:
-            print(f"  FETCH SEGMENT EXCEPTION: {e}", flush=True)
-            raise e
+            print(f"\n  Segment {i} failed: {e}", flush=True)
+            enriched_segments.append(segment)
     
-    # Parallel API calls (max 5 concurrent to avoid rate limits)
-    enriched_segments = [None] * len(route_segments)
-    # Use sequential execution (max_workers=1) to prevent race conditions and improve debugging
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future_to_idx = {executor.submit(fetch_segment, seg): idx 
-                        for idx, seg in enumerate(route_segments)}
-        
-        for future in as_completed(future_to_idx):
-            idx = future_to_idx[future]
-            try:
-                enriched_segments[idx] = future.result()
-            except Exception as e:
-                print(f"  Segment {idx} failed: {e}")
-                # Keep original segment if API fails
-                enriched_segments[idx] = route_segments[idx]
-    
-    print("Road geometry fetched")
+    print("\nRoad geometry fetched.", flush=True)
     return enriched_segments
 
 def get_postal_code(lat: float, lng: float, api_key: str) -> str:
@@ -890,20 +862,37 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
     
     max_ride_seconds = int(max_ride_time_minutes * 60)
 
-    # HARD CONSTRAINT with safety buffer
-    # Use 75% of max ride time as hard cap (Haversine math) to guarantee 
-    # real-world post-processed paths easily fit the 60 min limit.
-    max_hard_cap = int(max_ride_seconds * 0.75)
+    # SOFT TARGET with safety buffer
+    # Use 60% of max ride time as soft target to realistically match traffic and bus speeds.
+    # Haversine heavily underestimates real road travel times.
+    soft_target = int(max_ride_seconds * 0.6)
+    
+    # Strict HARD CAP with safety buffer for Haversine underestimation.
+    # We apply the 0.6 factor here as well so the solver's estimated time (which is often faster than real traffic)
+    # does not allow routes that will end up exceeding the max ride time when real road geometry is applied.
+    hard_cap = int(max_ride_seconds * 0.6)
 
     routing.AddDimension(
-        time_callback_index, slack_max=1800, capacity=max_hard_cap,
+        time_callback_index, slack_max=1800, capacity=hard_cap,
         fix_start_cumul_to_zero=True, name='Time'
     )
 
     time_dimension = routing.GetDimensionOrDie('Time')
 
-    # Global span cost to minimize route duration spread
+    # Add a strong penalty for exceeding the soft target to squeeze durations down
+    # Penalty of 100 per second over the soft target
+    for vehicle_id in range(num_vehicles):
+        end_index = routing.End(vehicle_id)
+        time_dimension.SetCumulVarSoftUpperBound(end_index, soft_target, 100)
+
+    # Global span cost to minimize route duration spread (balances the routes)
     time_dimension.SetGlobalSpanCostCoefficient(200)
+
+    # SOFT PENALTY (Better Math): 
+    # Actively penalize long ride times per vehicle to squeeze the durations
+    # as low as possible (e.g., aiming for 30-40 mins instead of just <60 mins).
+    for vehicle_id in range(num_vehicles):
+        time_dimension.SetSpanCostCoefficientForVehicle(100, vehicle_id)
 
     # --- ADVANCED CONSTRAINTS ---
     solver = routing.solver()
@@ -917,14 +906,17 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
             
     for fc, members in family_groups.items():
         if len(members) > 1:
-            first = members[0]
-            for other in members[1:]:
+            for i in range(len(members) - 1):
+                current_node = members[i]
+                next_node = members[i + 1]
                 # Force siblings to be assigned to the same vehicle
-                solver.Add(routing.VehicleVar(first) == routing.VehicleVar(other))
+                solver.Add(routing.VehicleVar(current_node) == routing.VehicleVar(next_node))
+                # Force siblings to be picked up consecutively (breaks symmetry and guarantees group pickup)
+                solver.Add(routing.NextVar(current_node) == next_node)
                 
     # 2. Special Needs Constraint: Restrict ride time to 30 mins (1800s)
     special_needs_max_time = 1800
-    M = max_hard_cap * 2  # Big-M for implication
+    M = hard_cap * 2  # Big-M for implication
     
     for i, student in enumerate(students):
         if student.get('special_needs'):
@@ -955,30 +947,34 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
     if not students:
         return {'routes': [], 'total_distance': 0, 'total_time': 0}
     
-    # Use Haversine distance matrix for solver speed (per user request)
     distance_matrix = build_distance_matrix_fast(school, students)
     time_matrix = None
     
-    # ===== PHASE 1: Quick solve to discover bus count (5 seconds) =====
-    print(f"\n--- Phase 1: Quick solve with {num_vehicles} vehicles (5s) ---")
+    # ===== PHASE 1: Quick solve to discover bus count (Fast Construction) =====
+    print(f"\n--- Phase 1: Quick solve with {num_vehicles} vehicles (Construction Heuristic) ---")
     manager, routing, capacities = _build_cvrp_model(
         school, students, num_vehicles, distance_matrix,
         max_ride_time_minutes, vehicle_capacities, time_matrix
     )
     
     search_params_p1 = pywrapcp.DefaultRoutingSearchParameters()
+    # Use strictly fast construction heuristic for baseline sizing
     search_params_p1.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        routing_enums_pb2.FirstSolutionStrategy.SAVINGS
     )
-    search_params_p1.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    )
-    search_params_p1.time_limit.seconds = 5
+    # Skip local search metaheuristics entirely in Phase 1 for speed
+    search_params_p1.time_limit.seconds = 2
     
     solution_p1 = routing.SolveWithParameters(search_params_p1)
     
     if not solution_p1:
-        return {'error': 'No solution found (constraints too tight?)'}
+        # Fallback to Path Cheapest Arc if Savings fails
+        search_params_p1.first_solution_strategy = (
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        )
+        solution_p1 = routing.SolveWithParameters(search_params_p1)
+        if not solution_p1:
+            return {'error': 'No solution found (constraints too tight?)'}
     
     # Count how many buses Phase 1 actually used
     buses_used_p1 = 0
@@ -990,7 +986,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
     
     print(f"Phase 1 result: {buses_used_p1} buses used (out of {num_vehicles})")
     
-    # ===== PHASE 2: Refined solve with exact bus count (15 seconds) =====
+    # ===== PHASE 2: Refined solve with exact bus count (35 seconds) =====
     # Re-solve with exact bus count so solver focuses entirely on route quality
     
     # Identify WHICH vehicles were used in Phase 1 to preserve their specific capacities
@@ -1010,7 +1006,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
         p2_capacities = [40] * optimal_vehicles
         vehicle_map = list(range(optimal_vehicles)) # Fallback mapping (if homogeneous)
 
-    print(f"--- Phase 2: Refined solve with {optimal_vehicles} vehicles (15s) ---")
+    print(f"--- Phase 2: Refined solve with {optimal_vehicles} vehicles (35s) ---")
     print(f"    Capacities: {p2_capacities}")
     
     manager, routing, capacities = _build_cvrp_model(
@@ -1019,33 +1015,20 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
     )
     
     search_params_p2 = pywrapcp.DefaultRoutingSearchParameters()
+    # CRITICAL FIX: Use the exact same construction strategy that succeeded in Phase 1
+    # Do not switch to PATH_CHEAPEST_ARC as it can fail on tight constraints where SAVINGS succeeded.
     search_params_p2.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        routing_enums_pb2.FirstSolutionStrategy.SAVINGS
     )
     search_params_p2.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH
     )
-    search_params_p2.time_limit.seconds = 30
+    search_params_p2.time_limit.seconds = 35
     
     solution = routing.SolveWithParameters(search_params_p2)
     
     if not solution:
-        # Fallback: Phase 2 failed, use Phase 1 result
-        print("Phase 2 failed — falling back to Phase 1 solution")
-        # Re-build with original count to extract Phase 1 solution
-        manager, routing, capacities = _build_cvrp_model(
-            school, students, num_vehicles, distance_matrix,
-            max_ride_time_minutes, vehicle_capacities, time_matrix
-        )
-        search_params_p1.time_limit.seconds = 5
-        solution = routing.SolveWithParameters(search_params_p1)
-        optimal_vehicles = num_vehicles
-        vehicle_map = list(range(num_vehicles)) # Reset map
-        if not solution:
-            return {'error': 'No solution found (constraints too tight?)'}
-        
-        # Reset map for Phase 1 fallback
-        vehicle_map = list(range(num_vehicles))
+        return {'error': 'No solution found with exact vehicle count (constraints too tight?)'}
     
     num_vehicles = optimal_vehicles  # Use for extraction below
     
@@ -1261,6 +1244,11 @@ def enrich_routes_with_geometry(routes: List[Dict], api_key: str,
                     'bus': route.get('bus_number', 0)
                 })
         
+        # Preserve old haversine values before overwriting
+        if 'haversine_time_minutes' not in route:
+            route['haversine_time_minutes'] = route.get('time_minutes')
+            route['haversine_distance_km'] = route.get('distance_km')
+
         # Update route with real data
         route['segments'] = enriched_segments
         route['distance_km'] = round(real_distance, 2)
@@ -1290,7 +1278,6 @@ def analyze_student_clusters(students: List[Dict], school: Dict) -> Dict:
             'cluster_info': [],
             'isolated_students': students if len(students) == 1 else [],
             'avg_cluster_distance': 0.0,
-            'recommended_buses': 1,
             'min_buses': 1,
             'recommendation': 'Use 1 bus for few students',
             'visualization': {
@@ -1476,10 +1463,6 @@ def analyze_student_clusters(students: List[Dict], school: Dict) -> Dict:
             )  # Already in km
             cluster_distances.append(dist)
     
-    # Recommend bus allocation
-    # Always account for capacity (40 students per bus max)
-    capacity_based_buses = max(1, math.ceil(len(students) / 40))
-    
     # Check if isolated students are far from clusters
     isolated_far = False
     if isolated_students and cluster_info:
@@ -1495,46 +1478,29 @@ def analyze_student_clusters(students: List[Dict], school: Dict) -> Dict:
                 isolated_far = True
                 break
     
+    avg_cluster_distance = np.mean(cluster_distances) if cluster_distances else 0
+
     if n_clusters == 0:
-        # No dense clusters, students are spread out
-        buses_needed = capacity_based_buses
-        recommendation = f"Students are spread out - use {buses_needed} bus(es)"
-        min_buses = buses_needed
+        recommendation = "Students are spread out"
     elif n_clusters == 1:
-        # One dense cluster - still respect capacity!
-        buses_needed = capacity_based_buses
         if isolated_far:
-            buses_needed = max(buses_needed, 2)  # At least 2 if isolated students are far
-            recommendation = f"One cluster with far isolated students - use {buses_needed} bus(es)"
+            recommendation = "One cluster with far isolated students"
         else:
-            recommendation = f"One dense cluster - use {buses_needed} bus(es)"
-        min_buses = max(1, buses_needed - 1)  # Allow some flexibility
+            recommendation = "One dense cluster"
     else:
-        # Multiple clusters - check if they're far apart
-        avg_cluster_distance = np.mean(cluster_distances) if cluster_distances else 0
-        
         if avg_cluster_distance > 5:
-            # Far-apart clusters: recommend based on capacity, add a small buffer
-            buses_needed = capacity_based_buses + min(n_clusters - 1, 5)  # Small buffer, not per-cluster
-            if n_noise > 0:
-                buses_needed += max(1, math.ceil(n_noise / 20))
-            recommendation = f"Clusters are far apart ({avg_cluster_distance:.1f}km) - use {buses_needed} bus(es)"
-            min_buses = capacity_based_buses
+            recommendation = f"Clusters are far apart ({avg_cluster_distance:.1f}km)"
         else:
-            buses_needed = capacity_based_buses
-            recommendation = f"Clusters are close ({avg_cluster_distance:.1f}km) - use {buses_needed} bus(es)"
-            min_buses = max(1, buses_needed - 1)
+            recommendation = f"Clusters are close ({avg_cluster_distance:.1f}km)"
     
-    print(f"   Recommendation: {recommendation}\n")
+    print(f"   Observation: {recommendation}\n")
     
     return {
         'n_clusters': int(n_clusters),
         'n_noise': int(n_noise),
         'cluster_info': cluster_info,
         'isolated_students': isolated_students,
-        'avg_cluster_distance': float(np.mean(cluster_distances)) if cluster_distances else 0.0,
-        'recommended_buses': int(buses_needed),
-        'min_buses': int(min_buses),  # Minimum buses to try
+        'avg_cluster_distance': float(avg_cluster_distance),
         'recommendation': recommendation,
         'visualization': {
             'clusters': [
@@ -1648,14 +1614,13 @@ def optimize_routes(school: Dict, students: List[Dict], max_buses: int, api_key:
     
     # ===== STEP 1: Analyze clusters for visualization and recommendation =====
     cluster_analysis = analyze_student_clusters(students, school)
-    recommended_buses = cluster_analysis['recommended_buses']
     cluster_visualization = cluster_analysis.get('visualization', {})
     
-    print(f"Cluster analysis recommends {recommended_buses} buses")
-    print(f"   (This is just a suggestion - CVRP will optimize)\n")
+    # Check if this is a large dataset that requires divide-and-conquer
+    is_large_dataset = len(students) >= 60
     
     # ===== FLEET AWARE OPTIMIZATION =====
-    if fleet_capacities and len(fleet_capacities) > 0:
+    if fleet_capacities and len(fleet_capacities) > 0 and not is_large_dataset:
         print(f"!!! USING HETEROGENEOUS FLEET !!!")
         print(f"Vehicles: {len(fleet_capacities)}, Capacities: {fleet_capacities}")
 
@@ -1672,35 +1637,18 @@ def optimize_routes(school: Dict, students: List[Dict], max_buses: int, api_key:
 
         # Handle infeasibility (hard time constraint too tight for available fleet)
         if 'error' in result or not result.get('routes'):
-            # Estimate how many more buses might be needed
-            total_capacity = sum(fleet_capacities)
-            students_count = len(students)
-
-            # Calculate a rough estimate of buses needed for time constraint
-            estimated_buses_for_time = _estimate_buses_for_time_constraint(
-                school, students, max_ride_time, fleet_capacities
-            )
-
-            error_msg = result.get('error', 'No feasible solution found')
-            error_msg += '\n\n'
-            error_msg += f'Fleet has {len(fleet_capacities)} vehicle(s) with total capacity {total_capacity}.\n'
-            error_msg += f'With the {max_ride_time}-minute time constraint, '
-            error_msg += f'you may need approximately {estimated_buses_for_time} vehicle(s).\n'
-            error_msg += f'Current fleet: {len(fleet_capacities)} vehicle(s).\n'
-            if estimated_buses_for_time > len(fleet_capacities):
-                error_msg += f'>>> Please add at least {estimated_buses_for_time - len(fleet_capacities)} more vehicle(s) to your fleet.'
-
+            error_msg = result.get('error', 'No feasible solution found with hard time constraint')
+            
             return {
                 'routes': [],
                 'total_buses': 0,
                 'error': error_msg,
                 'cluster_visualization': cluster_visualization,
-                'estimated_buses_needed': estimated_buses_for_time,
                 'current_fleet_size': len(fleet_capacities)
             }
 
-        # Enrich routes with real geometry
-        enrich_routes_with_geometry(result['routes'], api_key, school_arrival_time, max_ride_time)
+        # Enrich routes with real geometry - DISABLED for lazy loading
+        # enrich_routes_with_geometry(result['routes'], api_key, school_arrival_time, max_ride_time)
 
         # Check for time violations after geometry enrichment (real travel times)
         all_violations = []
@@ -1729,9 +1677,9 @@ def optimize_routes(school: Dict, students: List[Dict], max_buses: int, api_key:
             'cluster_visualization': cluster_visualization
         }
     
-    # ===== CHECK: RECOMMENDED vs MAX BUSES (warn but don't block) =====
-    if recommended_buses > max_buses:
-        print(f"WARNING: Cluster analysis recommends {recommended_buses} buses but max is {max_buses}.")
+    # ===== CHECK: MIN BUSES (warn but don't block) =====
+    if min_buses_needed > max_buses:
+        print(f"WARNING: Math requires at least {min_buses_needed} buses but max is {max_buses}.")
         print(f"         Will attempt optimization with {max_buses} buses - may have time violations.")
     
     # ===== STEP 2: Decide routing strategy based on cluster separation =====
@@ -1755,16 +1703,14 @@ def optimize_routes(school: Dict, students: List[Dict], max_buses: int, api_key:
             print(f"  Far isolated student detected: {student['name']} is {min_dist_to_cluster:.1f}km from nearest cluster")
             break
     
-    # Use split strategy if clusters are far apart OR there are far isolated students
-    # BUT: Force UNIFIED if there are too many clusters (>10) to avoid exponential solve time
-    too_many_clusters = len(cluster_info) > 10
-    use_cluster_splitting = ((avg_cluster_distance > 5 and len(cluster_info) > 1) or has_far_isolated) and not too_many_clusters
+    # Use split strategy only if clusters are far apart, OR there are far isolated students
+    # DISABLED is_large_dataset forced splitting as OR-Tools can handle 300+ nodes with Haversine
+    is_large_dataset = len(students) >= 60
     
-    if too_many_clusters:
-        print(f"NOTE: {len(cluster_info)} clusters detected - forcing UNIFIED strategy to avoid long solve times")
+    use_cluster_splitting = False
     
     if use_cluster_splitting:
-        reason = "far isolated students" if has_far_isolated else f"clusters {avg_cluster_distance:.1f}km apart"
+        reason = "large dataset" if is_large_dataset else ("far isolated students" if has_far_isolated else f"clusters {avg_cluster_distance:.1f}km apart")
         print(f"Using SPLIT strategy ({reason})")
         return _solve_with_cluster_splitting(
             school, students, max_buses, api_key, 
@@ -1793,26 +1739,17 @@ def _solve_unified(school: Dict, students: List[Dict], max_buses: int, api_key: 
                         max_ride_time_minutes=max_ride_time)
 
     if 'error' in result or not result['routes']:
-        # Estimate buses needed for time constraint
-        estimated_buses = _estimate_buses_for_time_constraint(
-            school, students, max_ride_time, [40] * max_buses
-        )
         error_msg = result.get('error', 'No feasible solution found with hard time constraint')
-        if estimated_buses > max_buses:
-            error_msg += f'\n\nWith the {max_ride_time}-minute time constraint, '
-            error_msg += f'you may need approximately {estimated_buses} bus(es). '
-            error_msg += f'Current limit: {max_buses} bus(es).'
 
         return {
             'routes': [],
             'total_buses': 0,
             'error': error_msg,
-            'cluster_visualization': cluster_visualization,
-            'estimated_buses_needed': estimated_buses
+            'cluster_visualization': cluster_visualization
         }
 
     # Enrich routes with real road geometry (post-processing)
-    enrich_routes_with_geometry(result['routes'], api_key, school_arrival_time, max_ride_time)
+    # enrich_routes_with_geometry(result['routes'], api_key, school_arrival_time, max_ride_time)
 
     # Check for time violations after geometry enrichment (real travel times may differ)
     all_violations = []
@@ -1916,6 +1853,7 @@ def _solve_with_cluster_splitting(school: Dict, students: List[Dict], max_buses:
             
             for route in best_cluster_result['routes']:
                 route['bus_number'] = bus_number
+                route['vehicle_index'] = bus_number - 1  # Overwrite with global sequential index
                 route['cluster_id'] = cluster_idx + 1
                 all_routes.append(route)
                 bus_number += 1
@@ -1934,7 +1872,7 @@ def _solve_with_cluster_splitting(school: Dict, students: List[Dict], max_buses:
         }
     
     # Enrich routes with real road geometry (post-processing)
-    enrich_routes_with_geometry(all_routes, api_key, school_arrival_time, max_ride_time)
+    # enrich_routes_with_geometry(all_routes, api_key, school_arrival_time, max_ride_time)
     
     selection_note = f"Split routing: {len(all_routes)} bus(es) across {len(cluster_students)} groups"
     print(f"\nResult: {selection_note}")

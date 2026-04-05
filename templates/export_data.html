@@ -133,7 +133,8 @@
                     <th>Bus</th>
                     <th>Plate</th>
                     <th>Pax</th>
-                    <th>Bus Duration</th>
+                    <th>Est. Time</th>
+                    <th>Real Time</th>
                     <th>Student ID</th>
                     <th>Student Name</th>
                     <th>Pickup Time</th>
@@ -188,7 +189,8 @@
                 const busStr = `Bus ${i + 1}`;
                 const vehiclePlate = route.vehicle_plate || 'Pending';
                 const distKm = route.total_distance_km || route.distance_km || 0;
-                const durMin = route.total_duration_minutes || route.time_minutes || 0;
+                const durMin = route.time_minutes || route.total_duration_minutes || 0;
+                const haversineMin = route.haversine_time_minutes || durMin;
                 
                 students.forEach((student, j) => {
                     const row = document.createElement('tr');
@@ -199,7 +201,8 @@
                         <td><strong>${busStr}</strong></td>
                         <td><span class="badge">${vehiclePlate}</span></td>
                         <td>${students.length}</td>
-                        <td style="color:#64748b;">${Math.round(durMin)} min</td>
+                        <td style="color:#64748b; text-decoration:line-through; font-size:0.85rem;">${Math.round(haversineMin)} min</td>
+                        <td style="color:#f59e0b; font-weight:700;">${Math.round(durMin)} min</td>
                         <td style="font-weight:600;">${student.student_id || 'S' + student.id}</td>
                         <td style="font-weight:500;">${student.name || '-'}</td>
                         <td style="color:#3b82f6; font-weight:600;">${student.pickup_time || '-'}</td>
@@ -214,6 +217,7 @@
                     // Add to CSV export array
                     exportedDataRows.push([
                         busStr, vehiclePlate, student.student_id || student.id || '',
+                        Math.round(haversineMin) + 'm', Math.round(durMin) + 'm',
                         student.latitude, student.longitude, student.pickup_time || '', 
                         student.postal || '', student.address_note || ''
                     ]);
@@ -233,7 +237,7 @@
         }
 
         let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "Bus,Vehicle Plate,Student ID,Latitude,Longitude,Time,Postal Code,Remark\n";
+        csvContent += "Bus,Vehicle Plate,Student ID,Est. Time,Real Time,Latitude,Longitude,Time,Postal Code,Remark\n";
         
         exportedDataRows.forEach(row => {
             let rowStr = row.map(cell => {

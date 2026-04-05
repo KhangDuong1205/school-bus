@@ -20,15 +20,17 @@
     .control-panel {
         width: 450px;
         min-width: 350px;
-        max-width: 700px;
+        max-width: 80vw; /* Allow it to take up to 80% of viewport width */
         background: white;
         display: flex;
         flex-direction: column;
         border-right: 1px solid #e2e8f0;
         z-index: 1000;
         box-shadow: 4px 0 15px rgba(0, 0, 0, 0.05);
-        transition: width 0.1s ease;
+        transition: width 0.1s ease, flex-basis 0.1s ease;
         position: relative;
+        flex-shrink: 0; /* Prevent flex container from squeezing it */
+        flex-basis: 450px; /* Explicit flex basis */
     }
 
     .control-panel.collapsed {
@@ -41,30 +43,42 @@
     /* Horizontal resize handle for control panel */
     .horizontal-resize-handle {
         position: absolute;
-        right: 0;
+        right: -5px;
         top: 0;
-        width: 6px;
+        width: 10px;
         height: 100%;
         cursor: ew-resize;
         background: transparent;
-        z-index: 1010;
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .horizontal-resize-handle::after {
+        content: '';
+        width: 4px;
+        height: 40px;
+        background: transparent;
+        border-radius: 2px;
         transition: background 0.2s;
     }
 
-    .horizontal-resize-handle:hover {
-        background: rgba(59, 130, 246, 0.3);
+    .horizontal-resize-handle:hover::after,
+    .horizontal-resize-handle.active-resize::after {
+        background: #94a3b8;
     }
 
-    .horizontal-resize-handle:active {
-        background: rgba(59, 130, 246, 0.5);
+    .horizontal-resize-handle:hover,
+    .horizontal-resize-handle.active-resize {
+        /* Subtle background on the whole handle when active */
+        background: rgba(59, 130, 246, 0.05);
     }
 
     /* TOGGLE BUTTON */
     .panel-toggle {
-        position: absolute;
-        left: 100%;
-        /* Just outside the panel */
-        top: 20px;
+        /* Positioned as a flex item between panel and map */
+        margin-top: 20px;
         background: white;
         border: 1px solid #e2e8f0;
         border-left: none;
@@ -77,9 +91,16 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        height: 40px;
+        position: absolute;
+        left: 450px;
+        transition: left 0.1s ease;
     }
 
-    .control-panel.collapsed+.panel-toggle i {
+    .control-panel.collapsed ~ .panel-toggle {
+        left: 0 !important;
+    }
+    .control-panel.collapsed ~ .panel-toggle i {
         transform: rotate(180deg);
     }
 
@@ -493,6 +514,37 @@
         display: flex;
         justify-content: space-between;
     }
+
+    .custom-student-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px !important;
+        height: 28px !important;
+        background-color: #3b82f6; /* Blue */
+        color: white;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        font-size: 14px;
+        transition: all 0.3s ease;
+    }
+
+    .custom-student-icon.violation {
+        background-color: #ef4444 !important; /* Red */
+        animation: pulse-red 1.5s infinite;
+        border-color: #fca5a5;
+    }
+
+    @keyframes pulse-red {
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    .student-marker-icon {
+        pointer-events: none;
+    }
 </style>
 {% endblock %}
 
@@ -537,18 +589,13 @@
 
                     <div class="input-row">
                         <div class="input-group">
-                            <label>Use Buses <span id="maxBusesHint"
-                                    style="font-weight:normal; color:#64748b;"></span></label>
-                            <input type="number" id="maxBuses" class="input-control" value="1" min="1" max="99">
-                        </div>
-                        <div class="input-group">
                             <label>School By</label>
                             <input type="time" id="schoolTime" class="input-control" value="07:30">
                         </div>
-                    </div>
-                    <div class="input-group" style="margin-bottom: 10px;">
-                        <label>Max Ride Time (min)</label>
-                        <input type="number" id="maxRideTime" class="input-control" value="60">
+                        <div class="input-group">
+                            <label>Max Ride Time (min)</label>
+                            <input type="number" id="maxRideTime" class="input-control" value="60">
+                        </div>
                     </div>
 
                     <!-- Analyze Clusters Button -->
@@ -584,7 +631,7 @@
 
             <!-- SECTION: CLUSTER LIST -->
             <div class="panel-section section-clusters" id="clusterListSection"
-                style="display: none; height: 200px; min-height: 100px;">
+                style="display: none; height: 200px; min-height: 100px; flex: 0 0 200px;">
                 <div class="panel-header" style="background: #f3e8ff;">
                     <span><i class="fas fa-layer-group" style="color: #8b5cf6;"></i> Cluster Analysis</span>
                     <button onclick="clearClusters()"
@@ -604,7 +651,7 @@
 
             <!-- SECTION: SAVED RUNS (New) -->
             <div class="panel-section section-saved-runs" id="savedRunsSection"
-                style="height: 150px; min-height: 100px;">
+                style="height: 150px; min-height: 100px; flex: 0 0 150px;">
                 <div class="panel-header" style="background: #ecfdf5;">
                     <span><i class="fas fa-history" style="color: #059669;"></i> Saved Runs</span>
                     <button onclick="loadSavedRuns()" title="Refresh List"
@@ -641,17 +688,29 @@
             <!-- TOP PANEL: ROUTE DETAILS + PICKUP LIST -->
             <div class="panel-section" id="sectionRoutes"
                 style="flex:1; display:flex; flex-direction:column; min-height:100px;">
-                <div class="panel-header">
+                <div class="panel-header" style="flex-wrap: wrap; gap: 8px;">
                     <span><i class="fas fa-route"></i> Generated Routes</span>
-                    <button onclick="window.location.href='/export-data'" id="exportCsvBtn" disabled
-                        style="border:none; background:none; cursor:pointer; color:#3b82f6; font-size:0.8rem; font-weight:600; margin-right:8px;"
-                        title="View Full Data Table">
-                        <i class="fas fa-table"></i> View Data
-                    </button>
-                    <button onclick="clearRouteLines()"
-                        style="border:none; background:none; cursor:pointer; color:#64748b; font-size:0.8rem;">
-                        Clear
-                    </button>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button onclick="toggleAllRoutesVisibility()" id="toggleAllRoutesBtn"
+                            style="border:1px solid #cbd5e1; background:white; cursor:pointer; color:#3b82f6; font-size:0.75rem; padding: 4px 8px; border-radius: 4px;"
+                            title="Toggle All Routes">
+                            <i class="fas fa-eye"></i> Routes
+                        </button>
+                        <button onclick="toggleAllStudentsVisibility()" id="toggleAllStudentsBtn"
+                            style="border:1px solid #cbd5e1; background:white; cursor:pointer; color:#8b5cf6; font-size:0.75rem; padding: 4px 8px; border-radius: 4px;"
+                            title="Toggle All Students">
+                            <i class="fas fa-eye"></i> Students
+                        </button>
+                        <button onclick="window.location.href='/export-data'" id="exportCsvBtn" disabled
+                            style="border:none; background:none; cursor:pointer; color:#3b82f6; font-size:0.8rem; font-weight:600;"
+                            title="View Full Data Table">
+                            <i class="fas fa-table"></i> Data
+                        </button>
+                        <button onclick="clearRouteLines()"
+                            style="border:none; background:none; cursor:pointer; color:#64748b; font-size:0.8rem;">
+                            Clear
+                        </button>
+                    </div>
                 </div>
                 <div class="panel-content" id="routeDetailsContent"
                     style="flex:1; overflow:hidden; display:flex; flex-direction:column;">
@@ -679,11 +738,40 @@
 
 {% block scripts %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script>
     // --- Layout Toggle ---
     function togglePanel() {
         const panel = document.getElementById('controlPanel');
+        const panelToggle = document.querySelector('.panel-toggle');
+        
         panel.classList.toggle('collapsed');
+        
+        if (panel.classList.contains('collapsed')) {
+            // When collapsed, reset inline styles that might prevent it from collapsing
+            panel.dataset.expandedWidth = panel.style.width || '450px';
+            panel.dataset.expandedFlexBasis = panel.style.flexBasis || '450px';
+            
+            panel.style.width = '0';
+            panel.style.minWidth = '0';
+            panel.style.flexBasis = '0';
+            
+            if (panelToggle) {
+                panelToggle.style.left = '0';
+            }
+        } else {
+            // Restore previous width
+            const expandedWidth = panel.dataset.expandedWidth || '450px';
+            const expandedFlexBasis = panel.dataset.expandedFlexBasis || '450px';
+            
+            panel.style.width = expandedWidth;
+            panel.style.minWidth = '350px';
+            panel.style.flexBasis = expandedFlexBasis;
+            
+            if (panelToggle) {
+                panelToggle.style.left = expandedWidth;
+            }
+        }
 
         // Force map resize mainly
         setTimeout(() => {
@@ -693,10 +781,13 @@
 
     // --- Resizable Sections ---
     function initResizeHandles() {
-        const handle1 = document.getElementById('resizeHandle1');
-        const detailsSection = document.querySelector('.section-details');
+        const detailsSection = document.querySelector('.section-details'); // No longer exists in the DOM directly like this
+        const savedRunsSection = document.getElementById('savedRunsSection');
+        const handleSavedRuns = document.getElementById('resizeHandleSaved');
+        
         const clusterSection = document.getElementById('clusterListSection');
         const handleClusters = document.getElementById('resizeHandleClusters');
+        
         const controlPanel = document.getElementById('controlPanel');
         const horizontalHandle = document.getElementById('horizontalResizeHandle');
 
@@ -708,49 +799,89 @@
         let startWidth = 0;
         let currentTarget = null;
 
-        // Vertical resize for Routes section
-        handle1.addEventListener('mousedown', (e) => {
-            isResizing = true;
-            currentTarget = detailsSection;
-            startY = e.clientY;
-            startHeight = detailsSection.offsetHeight;
-            document.body.style.cursor = 'ns-resize';
-            document.body.style.userSelect = 'none';
-            e.preventDefault();
-        });
+        // Vertical resize for Saved Runs section
+        if (handleSavedRuns) {
+            handleSavedRuns.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                currentTarget = savedRunsSection;
+                startY = e.clientY;
+                startHeight = savedRunsSection.offsetHeight;
+                document.body.style.cursor = 'ns-resize';
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            });
+        }
 
         // Vertical resize for Cluster section
-        handleClusters.addEventListener('mousedown', (e) => {
-            isResizing = true;
-            currentTarget = clusterSection;
-            startY = e.clientY;
-            startHeight = clusterSection.offsetHeight;
-            document.body.style.cursor = 'ns-resize';
-            document.body.style.userSelect = 'none';
-            e.preventDefault();
-        });
+        if (handleClusters) {
+            handleClusters.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                currentTarget = clusterSection;
+                startY = e.clientY;
+                startHeight = clusterSection.offsetHeight;
+                document.body.style.cursor = 'ns-resize';
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            });
+        }
 
         // Horizontal resize for control panel
         horizontalHandle.addEventListener('mousedown', (e) => {
             isHorizontalResizing = true;
             startX = e.clientX;
-            startWidth = controlPanel.offsetWidth;
-            document.body.style.cursor = 'ew-resize';
-            document.body.style.userSelect = 'none';
+            // Get actual width from getBoundingClientRect for more accuracy
+            startWidth = controlPanel.getBoundingClientRect().width;
+            horizontalHandle.classList.add('active-resize');
+            controlPanel.style.transition = 'none'; // Disable transition during drag
+            
+            // Add a style tag to override cursor on entire body to prevent flickering
+            const style = document.createElement('style');
+            style.id = 'resize-cursor-style';
+            style.innerHTML = '* { cursor: ew-resize !important; user-select: none !important; }';
+            document.head.appendChild(style);
+            
             e.preventDefault();
         });
 
         document.addEventListener('mousemove', (e) => {
             if (isResizing && currentTarget) {
-                const deltaY = e.clientY - startY;
-                const newHeight = Math.max(100, Math.min(window.innerHeight * 0.5, startHeight + deltaY));
+                // Determine direction of resize based on the target
+                // For savedRunsSection, the handle is BELOW it, so dragging down increases height
+                // Wait, actually the resize handle is below the savedRunsSection?
+                // Let's check the DOM structure:
+                // <div id="savedRunsSection">
+                // <div id="resizeHandleSaved">
+                // If handle is below, dragging down increases height: deltaY is positive
+                // Wait, in the DOM the handle is BELOW the section.
+                // So dragging down means e.clientY is larger than startY, deltaY is positive, height should INCREASE.
+                
+                let deltaY = e.clientY - startY;
+                
+                // If it's the cluster section, its handle is also BELOW it.
+                // So deltaY is positive when dragging down.
+                
+                const newHeight = Math.max(100, Math.min(window.innerHeight * 0.8, startHeight + deltaY));
                 currentTarget.style.height = newHeight + 'px';
+                currentTarget.style.flex = `0 0 ${newHeight}px`; // Force flex basis to respect the height
             }
 
             if (isHorizontalResizing) {
                 const deltaX = e.clientX - startX;
-                const newWidth = Math.max(300, Math.min(600, startWidth + deltaX));
+                const newWidth = Math.max(350, Math.min(window.innerWidth * 0.8, startWidth + deltaX));
+                
+                // Update width directly
                 controlPanel.style.width = newWidth + 'px';
+                // Also set max-width to prevent CSS from overriding it if window is resized
+                controlPanel.style.maxWidth = 'none';
+                controlPanel.style.flexBasis = newWidth + 'px'; // Update flex-basis to ensure it overrides flex constraints
+                
+                // Move the toggle button to match the new width
+                const panelToggle = document.querySelector('.panel-toggle');
+                if (panelToggle) {
+                    panelToggle.style.transition = 'none';
+                    panelToggle.style.left = newWidth + 'px';
+                }
+                
                 // Resize map after panel resize
                 if (map) map.invalidateSize();
             }
@@ -758,6 +889,19 @@
 
         document.addEventListener('mouseup', () => {
             if (isResizing || isHorizontalResizing) {
+                if (isHorizontalResizing) {
+                    horizontalHandle.classList.remove('active-resize');
+                    controlPanel.style.transition = ''; // Restore transition
+                    
+                    // Remove cursor override style
+                    const style = document.getElementById('resize-cursor-style');
+                    if (style) style.remove();
+                    
+                    const panelToggle = document.querySelector('.panel-toggle');
+                    if (panelToggle) {
+                        panelToggle.style.transition = 'left 0.1s ease';
+                    }
+                }
                 isResizing = false;
                 isHorizontalResizing = false;
                 currentTarget = null;
@@ -802,18 +946,11 @@
             const data = await res.json();
 
             const infoText = document.getElementById('fleetInfoText');
-            const maxBusesInput = document.getElementById('maxBuses');
-            const hint = document.getElementById('maxBusesHint');
 
             if (data.active_vehicles > 0) {
                 infoText.innerHTML = `<strong>${data.active_vehicles} buses</strong> available (capacity: ${data.total_capacity} students)`;
-                maxBusesInput.max = data.active_vehicles;
-                maxBusesInput.value = data.active_vehicles; // Default to all
-                hint.innerText = `(max ${data.active_vehicles})`;
             } else {
                 infoText.innerHTML = `<span style="color:#b91c1c;">No active vehicles. <a href="/vehicles" style="color:#1d4ed8;">Add vehicles</a></span>`;
-                maxBusesInput.value = 1;
-                hint.innerText = '';
             }
         } catch (e) {
             console.error(e);
@@ -822,13 +959,129 @@
     }
 
 
+    let drawControl = null;
+    let drawnItems = null;
+
     function initMap() {
         // Center on Singapore
-        map = L.map('map').setView([1.3521, 103.8198], 12);
+        map = L.map('map', {
+            zoomControl: false // Disable default zoom control so we can position it manually
+        }).setView([1.3521, 103.8198], 12);
+        
+        // Add zoom control manually to top-right to avoid overlapping with sidebar toggle
+        L.control.zoom({
+            position: 'topright'
+        }).addTo(map);
+
         L.tileLayer('https://www.onemap.gov.sg/maps/tiles/Default/{z}/{x}/{y}.png', {
             attribution: '© Singapore Land Authority, OneMap',
             maxZoom: 19
         }).addTo(map);
+
+        // Map events can be added here if needed
+    }
+
+    // --- Bulk Assign Logic ---
+    let pendingBulkAssignStudents = [];
+    let pendingDrawLayer = null;
+
+    function pointInPolygon(point, vs) {
+        // ray-casting algorithm
+        let x = point[0], y = point[1];
+        let inside = false;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+            let xi = vs[i][0], yi = vs[i][1];
+            let xj = vs[j][0], yj = vs[j][1];
+            let intersect = ((yi > y) != (yj > y))
+                && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    function showBulkAssignModal(students, layer) {
+        pendingBulkAssignStudents = students;
+        pendingDrawLayer = layer;
+
+        document.getElementById('bulkAssignCount').innerText = students.length;
+        
+        const select = document.getElementById('bulkAssignBusSelect');
+        select.innerHTML = '';
+        
+        // Populate with existing buses
+        optimizedRoutesData.routes.forEach((r, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            let label = r.vehicle_plate && r.vehicle_plate !== 'Pending' ? r.vehicle_plate : `Bus ${i + 1}`;
+            opt.innerText = `${label} (${r.students.length} current pax)`;
+            select.appendChild(opt);
+        });
+
+        // Add option for New Bus
+        const newOpt = document.createElement('option');
+        newOpt.value = 'new';
+        newOpt.innerText = '➕ Create New Bus Route';
+        select.appendChild(newOpt);
+
+        document.getElementById('bulkAssignModalOverlay').style.display = 'block';
+        document.getElementById('bulkAssignModal').style.display = 'block';
+    }
+
+    function closeBulkAssignModal() {
+        document.getElementById('bulkAssignModalOverlay').style.display = 'none';
+        document.getElementById('bulkAssignModal').style.display = 'none';
+        if (pendingDrawLayer && drawnItems) {
+            drawnItems.removeLayer(pendingDrawLayer);
+        }
+        pendingBulkAssignStudents = [];
+        pendingDrawLayer = null;
+    }
+
+    function confirmBulkAssign() {
+        const select = document.getElementById('bulkAssignBusSelect');
+        const targetValue = select.value;
+
+        let targetRouteIndex;
+
+        if (targetValue === 'new') {
+            // Create a new empty route
+            optimizedRoutesData.routes.push({
+                students: [],
+                vehicle_plate: 'Pending',
+                distance_km: 0,
+                time_minutes: 0,
+                time_violations: []
+            });
+            targetRouteIndex = optimizedRoutesData.routes.length - 1;
+        } else {
+            targetRouteIndex = parseInt(targetValue);
+        }
+
+        const targetRoute = optimizedRoutesData.routes[targetRouteIndex];
+        if (!targetRoute.students) targetRoute.students = [];
+
+        // Move students
+        pendingBulkAssignStudents.forEach(item => {
+            // 1. Remove from old route
+            const oldRoute = optimizedRoutesData.routes[item.currentRouteIndex];
+            if (oldRoute && oldRoute.students) {
+                oldRoute.students = oldRoute.students.filter(s => s.name !== item.student.name);
+            }
+            
+            // 2. Add to new route
+            targetRoute.students.push(item.student);
+        });
+
+        // Clean up empty routes (optional, but good UX if an old route is now empty)
+        // Actually, let's keep them so the UI doesn't suddenly shift IDs, but empty buses are fine.
+
+        closeBulkAssignModal();
+
+        // 1. Re-render the UI with the new assignments
+        displayRoutes(optimizedRoutesData);
+
+        // 2. Immediately trigger recalculation so times and geometry are updated
+        applyRouteChanges();
     }
 
     // --- Core Functions Mapping ---
@@ -852,17 +1105,56 @@
         Object.values(markers).forEach(m => map.removeLayer(m));
         markers = {};
 
+        // Group students by coordinates
+        const groupedStudents = {};
         students.forEach(s => {
-            const marker = L.circleMarker([s.latitude, s.longitude], {
-                radius: 8,
-                fillColor: '#3b82f6',
-                color: '#ffffff',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 1.0
+            const key = `${s.latitude.toFixed(5)},${s.longitude.toFixed(5)}`;
+            if (!groupedStudents[key]) groupedStudents[key] = [];
+            groupedStudents[key].push(s);
+        });
+
+        Object.values(groupedStudents).forEach(group => {
+            const count = group.length;
+            const s = group[0]; // Use first student for coords/address
+            
+            let badgeHtml = '';
+            if (count > 1) {
+                badgeHtml = `<div style="position:absolute; top:-5px; right:-5px; background:#ef4444; color:white; border-radius:50%; width:16px; height:16px; font-size:10px; display:flex; align-items:center; justify-content:center; font-weight:bold; border:1px solid white; z-index:1000;">${count}</div>`;
+            }
+
+            const iconHtml = `<div class="custom-student-icon" style="position:relative;">
+                <i class="fas fa-user-graduate"></i>
+                ${badgeHtml}
+            </div>`;
+
+            const marker = L.marker([s.latitude, s.longitude], {
+                icon: L.divIcon({
+                    className: 'student-marker-container',
+                    html: iconHtml,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14],
+                    popupAnchor: [0, -14]
+                })
             }).addTo(map);
-            marker.bindPopup(`<b>${s.name}</b><br>${s.address}`);
-            markers[s.id] = marker;
+
+            // Build popup content
+            let popupContent = `<b>${s.address || 'Address'}</b><hr style="margin:4px 0; border:0; border-top:1px solid #ccc;">`;
+            popupContent += `<ul style="margin:0; padding-left:16px; font-size:0.9rem;">`;
+            group.forEach(st => {
+                popupContent += `<li>${st.name}</li>`;
+            });
+            popupContent += `</ul>`;
+
+            marker.bindPopup(popupContent);
+            
+            // Store marker using the first student's ID or name so it can be referenced
+            markers[s.id || s.name] = marker;
+            // Also store for other students in the same group so hover/focus logic still works
+            if (count > 1) {
+                group.forEach(st => {
+                    markers[st.id || st.name] = marker;
+                });
+            }
         });
     }
 
@@ -1146,11 +1438,7 @@
                     <span>Found <strong>${data.n_clusters}</strong> clusters</span>
                     <span>${data.isolated_students.length} isolated</span>
                 </div>
-                <div style="color:#64748b;">Rec: <strong>${data.recommended_buses}</strong> buses (${data.total_students} students)</div>
             `;
-
-            // Update max buses suggestion
-            document.getElementById('maxBuses').value = data.recommended_buses;
 
         } catch (e) {
             console.error(e);
@@ -1320,29 +1608,237 @@
     }
 
     // --- Route Toggling ---
-    function toggleRouteLayer(index, checkbox) {
-        const layer = routeLayers[index];
-        if (!layer) return;
+    let allRoutesVisible = true;
+    let allStudentsVisible = true;
 
-        if (checkbox.checked) {
-            if (!map.hasLayer(layer)) {
-                layer.addTo(map);
-            }
-        } else {
-            if (map.hasLayer(layer)) {
-                map.removeLayer(layer);
-            }
+    function toggleAllRoutesVisibility() {
+        allRoutesVisible = !allRoutesVisible;
+        const btn = document.getElementById('toggleAllRoutesBtn');
+        if (btn) {
+            btn.innerHTML = allRoutesVisible ? '<i class="fas fa-eye"></i> Routes' : '<i class="fas fa-eye-slash"></i> Routes';
+            btn.style.color = allRoutesVisible ? '#3b82f6' : '#94a3b8';
+        }
+
+        if (optimizedRoutesData && optimizedRoutesData.routes) {
+            optimizedRoutesData.routes.forEach((route, i) => {
+                const layer = routeLayers[i];
+                const btnIcon = document.getElementById(`eyeBtn-${i}`);
+                
+                if (layer) {
+                    if (allRoutesVisible) {
+                        if (!map.hasLayer(layer)) layer.addTo(map);
+                    } else {
+                        if (map.hasLayer(layer)) map.removeLayer(layer);
+                    }
+                }
+                
+                if (btnIcon) {
+                    btnIcon.className = allRoutesVisible ? 'fas fa-eye' : 'fas fa-eye-slash';
+                    btnIcon.parentElement.style.color = allRoutesVisible ? '#3b82f6' : '#94a3b8';
+                }
+            });
         }
     }
 
-    function toggleAllRoutes(headerCheckbox) {
-        const isChecked = headerCheckbox.checked;
-        const checkboxes = document.querySelectorAll('#busTableBody input[type="checkbox"]');
+    function toggleAllStudentsVisibility() {
+        allStudentsVisible = !allStudentsVisible;
+        const btn = document.getElementById('toggleAllStudentsBtn');
+        if (btn) {
+            btn.innerHTML = allStudentsVisible ? '<i class="fas fa-eye"></i> Students' : '<i class="fas fa-eye-slash"></i> Students';
+            btn.style.color = allStudentsVisible ? '#8b5cf6' : '#94a3b8';
+        }
 
-        checkboxes.forEach((cb, index) => {
-            cb.checked = isChecked;
-            toggleRouteLayer(index, cb);
+        Object.values(markers).forEach(marker => {
+            if (allStudentsVisible) {
+                if (!map.hasLayer(marker)) marker.addTo(map);
+            } else {
+                if (map.hasLayer(marker)) map.removeLayer(marker);
+            }
         });
+
+        // Also toggle the small pickup markers that are added during routing/animation
+        pickupMarkers.forEach(marker => {
+            if (allStudentsVisible) {
+                if (!map.hasLayer(marker)) marker.addTo(map);
+            } else {
+                if (map.hasLayer(marker)) map.removeLayer(marker);
+            }
+        });
+    }
+
+    async function fetchAllRealRoutes() {
+        if (!optimizedRoutesData || !optimizedRoutesData.routes) return;
+        
+        const btn = document.getElementById('fetchAllRoutesBtn');
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
+            btn.disabled = true;
+        }
+
+        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+        
+        for (let i = 0; i < optimizedRoutesData.routes.length; i++) {
+            const fetchBtn = document.getElementById(`fetchBtn-${i}`);
+            // Only fetch if it hasn't been fetched yet (button is still visible)
+            if (fetchBtn && fetchBtn.style.display !== 'none') {
+                const color = colors[i % colors.length];
+                await fetchAndDrawRoute(i, color, true); // pass true for silent mode if needed, but sequential is fine
+            }
+        }
+        
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-check"></i> All Fetched';
+            setTimeout(() => {
+                btn.innerHTML = '<i class="fas fa-route"></i> Fetch All Real Routes';
+                btn.disabled = false;
+            }, 3000);
+        }
+    }
+
+    async function fetchAndDrawRoute(index, color, skipEventStop = false) {
+        if (!skipEventStop && window.event) window.event.stopPropagation();
+        
+        const route = optimizedRoutesData && optimizedRoutesData.routes ? optimizedRoutesData.routes[index] : null;
+        if (!route) return;
+
+        const btnIcon = document.getElementById(`fetchBtn-${index}`).querySelector('i');
+        btnIcon.className = 'fas fa-spinner fa-spin';
+        
+        try {
+            const response = await fetch('/api/fetch-geometry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    route: route,
+                    school_time: document.getElementById('schoolTime').value,
+                    max_ride_time: document.getElementById('maxRideTime').value
+                })
+            });
+            const result = await response.json();
+            
+            if (result.error) {
+                alert('Error fetching route: ' + result.error);
+                btnIcon.className = 'fas fa-route';
+                return;
+            }
+
+            const oldTime = route.time_minutes;
+            const updatedRoute = result.route;
+            // Update the stored data with the new route
+            optimizedRoutesData.routes[index] = updatedRoute;
+            sessionStorage.setItem('latestRoutes', JSON.stringify(optimizedRoutesData.routes));
+            sessionStorage.setItem('optimizedRoutesFullData', JSON.stringify(optimizedRoutesData));
+            
+            // Update the stats display to show both times distinctly
+            const statsDiv = document.getElementById(`route-stats-${index}`);
+            if (statsDiv) {
+                const hasViolations = updatedRoute.time_violations && updatedRoute.time_violations.length > 0;
+                statsDiv.style.color = hasViolations ? '#ef4444' : '#3b82f6';
+                statsDiv.innerHTML = `
+                    <span style="text-decoration:line-through; opacity:0.5; font-size:0.75rem;" title="Haversine Estimate">${Math.round(oldTime)}m</span> 
+                    <span style="color:#f59e0b; font-weight:700;" title="Real Travel Time">${Math.round(updatedRoute.time_minutes)} min</span> 
+                    <span style="color:#64748b; font-size:0.8rem; margin-left:4px;">• ${updatedRoute.distance_km.toFixed(1)} km</span>
+                `;
+            }
+            
+            // Draw Map Lines
+            let routeGeometry = [];
+            if (updatedRoute.segments && updatedRoute.segments.length > 0) {
+                updatedRoute.segments.forEach(seg => {
+                    if (seg.geometry) routeGeometry = routeGeometry.concat(seg.geometry);
+                });
+            } else if (updatedRoute.geometry) {
+                routeGeometry = updatedRoute.geometry;
+            }
+
+            if (routeGeometry.length > 0) {
+                // Remove old line if exists
+                if (routeLayers[index] && map.hasLayer(routeLayers[index])) {
+                    map.removeLayer(routeLayers[index]);
+                }
+                
+                const hasRouteViolations = updatedRoute.time_violations && updatedRoute.time_violations.length > 0;
+                const lineColor = hasRouteViolations ? '#ef4444' : color;
+                
+                // Enhance line distinctness: thicker, higher opacity, distinct border wrapper
+                const line = L.polyline(routeGeometry, {
+                    color: lineColor,
+                    weight: 6, // Thicker line
+                    opacity: 0.9, // Higher opacity
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    dashArray: hasRouteViolations ? '10, 10' : null
+                }).addTo(map);
+                
+                // Optional: Add a dark outline to make it stand out against roads
+                const outline = L.polyline(routeGeometry, {
+                    color: '#000000',
+                    weight: 8,
+                    opacity: 0.4,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    dashArray: hasRouteViolations ? '10, 10' : null
+                }).addTo(map);
+                
+                // Group them so we can toggle both at once
+                const layerGroup = L.layerGroup([outline, line]);
+                routeLayers[index] = layerGroup;
+                layerGroup.addTo(map);
+                
+                map.fitBounds(line.getBounds(), { padding: [20, 20] });
+                
+                // Hide the fetch button since it's fetched
+                document.getElementById(`fetchBtn-${index}`).style.display = 'none';
+                document.getElementById(`eyeBtn-${index}`).className = 'fas fa-eye';
+                document.getElementById(`eyeBtn-${index}`).parentElement.style.color = '#3b82f6';
+            }
+        } catch (err) {
+            alert('Failed to fetch route geometry');
+            btnIcon.className = 'fas fa-route';
+        }
+    }
+
+    function toggleRouteVisibility(index) {
+        // Stop event from triggering the accordion collapse/expand
+        if (window.event) window.event.stopPropagation();
+        
+        const layer = routeLayers[index];
+        const route = optimizedRoutesData && optimizedRoutesData.routes ? optimizedRoutesData.routes[index] : null;
+        if (!layer) return;
+        
+        const btnIcon = document.getElementById(`eyeBtn-${index}`);
+
+        let isNowVisible = false;
+
+        if (map.hasLayer(layer)) {
+            map.removeLayer(layer);
+            isNowVisible = false;
+            if (btnIcon) {
+                btnIcon.className = 'fas fa-eye-slash';
+                btnIcon.parentElement.style.color = '#94a3b8';
+            }
+        } else {
+            layer.addTo(map);
+            isNowVisible = true;
+            if (btnIcon) {
+                btnIcon.className = 'fas fa-eye';
+                btnIcon.parentElement.style.color = '#3b82f6';
+            }
+        }
+
+        // Also toggle students for this route
+        if (route && route.students) {
+            route.students.forEach(s => {
+                const marker = markers[s.id || s.name];
+                if (marker) {
+                    if (isNowVisible) {
+                        if (!map.hasLayer(marker)) marker.addTo(map);
+                    } else {
+                        if (map.hasLayer(marker)) map.removeLayer(marker);
+                    }
+                }
+            });
+        }
     }
 
     // --- Optimization Logic ---
@@ -1362,12 +1858,12 @@
         btn.style.animation = 'pulse 1.5s infinite';
 
         // Show progress updates
-        statusDiv.innerHTML = '<span style="color:#f59e0b;">⏳ Step 1/3: Analyzing student clusters...</span>';
+        statusDiv.innerHTML = '<span style="color:#f59e0b;">⏳ Step 1/3: Preparing distance and time matrices...</span>';
 
         // Fake progress updates (since we can't get real progress from backend)
         const progressSteps = [
-            { delay: 3000, text: '⏳ Step 2/3: Running route optimization...' },
-            { delay: 8000, text: '⏳ Step 3/3: Fetching road geometry...' }
+            { delay: 3000, text: '⏳ Step 2/3: Running Vehicle Routing optimization...' },
+            { delay: 8000, text: '⏳ Step 3/3: Fetching real road geometry from OneMap...' }
         ];
 
         const timeouts = progressSteps.map(step =>
@@ -1381,7 +1877,6 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    max_buses: document.getElementById('maxBuses').value,
                     school_time: document.getElementById('schoolTime').value,
                     max_ride_time: document.getElementById('maxRideTime').value
                 })
@@ -1423,6 +1918,7 @@
         
         // Save to Session Storage for the Export Data Page
         sessionStorage.setItem('latestRoutes', JSON.stringify(data.routes));
+        sessionStorage.setItem('optimizedRoutesFullData', JSON.stringify(data));
         
         const container = document.getElementById('routeDetailsContent');
 
@@ -1431,6 +1927,13 @@
         routeLayers = {};
         pickupMarkers.forEach(m => map.removeLayer(m));
         pickupMarkers = [];
+
+        // Reset time violations on markers
+        Object.values(markers).forEach(m => {
+            if (m._icon && m._icon.querySelector('.custom-student-icon')) {
+                m._icon.querySelector('.custom-student-icon').classList.remove('violation');
+            }
+        });
 
         if (!data.routes || data.routes.length === 0) {
             container.innerHTML = 'No feasible routes found.';
@@ -1441,10 +1944,14 @@
         const exportBtn = document.getElementById('exportCsvBtn');
         if (exportBtn) exportBtn.disabled = false;
         // --- NEW SORTABLE LAYOUT FOR DRAG AND DROP ---
-        // --- NEW SORTABLE LAYOUT FOR DRAG AND DROP ---
         container.innerHTML = `
             <div style="padding:16px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-                <div style="font-weight:700; color:#1e293b; font-size:1.1rem; margin-bottom:4px;">Manually Adjust Routes</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <div style="font-weight:700; color:#1e293b; font-size:1.1rem;">Manually Adjust Routes</div>
+                    <button onclick="fetchAllRealRoutes()" id="fetchAllRoutesBtn" class="btn-primary" style="padding:6px 12px; font-size:0.8rem; width:auto; border-radius:6px; background:#10b981; border:none;">
+                        <i class="fas fa-route"></i> Fetch All Real Routes
+                    </button>
+                </div>
                 <div style="font-size:0.85rem; color:#64748b; line-height:1.4;">
                     Click a bus to expand its student list. Drag and drop students using the <b>⋮⋮</b> handle to modify assignments.
                 </div>
@@ -1466,8 +1973,10 @@
 
         data.routes.forEach((route, i) => {
             const color = colors[i % colors.length];
+            const hasRouteViolations = route.time_violations && route.time_violations.length > 0;
+            const lineColor = hasRouteViolations ? '#ef4444' : color; // Red line if any violation on route
 
-            // 1. Draw Map Lines
+            // 1. Draw Route Geometry (if it exists, e.g. from sessionStorage)
             let routeGeometry = [];
             if (route.segments && route.segments.length > 0) {
                 route.segments.forEach(seg => {
@@ -1479,12 +1988,28 @@
 
             if (routeGeometry.length > 0) {
                 const line = L.polyline(routeGeometry, {
-                    color: color,
-                    weight: 4,
-                    opacity: 0.8
+                    color: lineColor,
+                    weight: 6,
+                    opacity: 0.9,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    dashArray: hasRouteViolations ? '10, 10' : null
                 }).addTo(map);
-                routeLayers[i] = line;
-                if (i === 0) map.fitBounds(line.getBounds());
+
+                const outline = L.polyline(routeGeometry, {
+                    color: '#000000',
+                    weight: 8,
+                    opacity: 0.4,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    dashArray: hasRouteViolations ? '10, 10' : null
+                }).addTo(map);
+
+                const layerGroup = L.layerGroup([outline, line]);
+                routeLayers[i] = layerGroup;
+                layerGroup.addTo(map);
+                
+                if (i === 0) map.fitBounds(line.getBounds(), { padding: [20, 20] });
             }
 
             // 2. Build Bus Card
@@ -1496,9 +2021,23 @@
             if (route.vehicle_plate && route.vehicle_plate !== 'Pending') {
                 busLabel = route.vehicle_plate;
             }
+            
+            let statsHtml = `${Math.round(durMin)} min • ${distKm.toFixed(1)} km`;
+            let fetchBtnDisplay = 'inline-block';
+            
+            if (route.haversine_time_minutes !== undefined) {
+                // It's already a real route
+                statsHtml = `
+                    <span style="text-decoration:line-through; opacity:0.5; font-size:0.75rem;" title="Haversine Estimate">${Math.round(route.haversine_time_minutes)}m</span> 
+                    <span style="color:#f59e0b; font-weight:700;" title="Real Travel Time">${Math.round(durMin)} min</span> 
+                    <span style="color:#64748b; font-size:0.8rem; margin-left:4px;">• ${distKm.toFixed(1)} km</span>
+                `;
+                fetchBtnDisplay = 'none';
+            }
 
             const card = document.createElement('div');
             card.className = 'bus-accordion';
+            if (hasRouteViolations) card.style.border = '1px solid #fca5a5';
             
             // Expand the first bus by default
             if (i === 0) card.classList.add('expanded');
@@ -1516,12 +2055,21 @@
                 <div style="display:flex; align-items:center; gap:10px;">
                     <i class="fas fa-chevron-right" style="color:#cbd5e1; font-size:0.8rem; transition:transform 0.2s;" 
                        class="accordion-icon"></i>
-                    <div style="width:12px; height:12px; border-radius:50%; background:${color};"></div>
+                    <div style="width:12px; height:12px; border-radius:50%; background:${lineColor};"></div>
                     <div style="font-weight:700; color:#1e293b; font-size:0.95rem;">${busLabel}</div>
                     <div style="font-size:0.75rem; font-weight:600; background:#f1f5f9; padding:2px 8px; border-radius:12px; color:#475569;">${students.length} pax</div>
+                    ${hasRouteViolations ? '<i class="fas fa-exclamation-triangle" style="color:#ef4444;" title="Time Violation"></i>' : ''}
                 </div>
                 <div style="display:flex; align-items:center; gap:16px;">
-                    <div style="font-size:0.85rem; font-weight:600; color:#3b82f6;">${Math.round(durMin)} min • ${distKm.toFixed(1)} km</div>
+                    <div id="route-stats-${i}" style="font-size:0.85rem; font-weight:600; color:${hasRouteViolations ? '#ef4444' : '#3b82f6'};">${statsHtml}</div>
+                    <button onclick="fetchAndDrawRoute(${i}, '${color}')" title="Fetch & Draw Route" id="fetchBtn-${i}"
+                            style="background:none; border:none; color:#f59e0b; cursor:pointer; font-size:1.1rem; padding:0; margin-left:4px; display:${fetchBtnDisplay};">
+                        <i class="fas fa-route"></i>
+                    </button>
+                    <button onclick="toggleRouteVisibility(${i})" title="Toggle Route Visibility"
+                            style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:1.1rem; padding:0; margin-left:4px;">
+                        <i class="fas fa-eye-slash" id="eyeBtn-${i}"></i>
+                    </button>
                     <button onclick="playRouteAnimation(${i}, '${color}')" title="Play Route Animation"
                             style="background:none; border:none; color:#10b981; cursor:pointer; font-size:1.2rem; padding:0; margin-left:4px;">
                         <i class="fas fa-play-circle" id="playBtn-${i}"></i>
@@ -1540,17 +2088,35 @@
             }
             
             students.forEach((s, idx) => {
+                const isViolation = route.time_violations && route.time_violations.some(v => v.student === s.name);
+                
+                // Highlight marker on map
+                const marker = markers[s.id || s.name];
+                if (marker && isViolation) {
+                    if (marker._icon && marker._icon.querySelector('.custom-student-icon')) {
+                        marker._icon.querySelector('.custom-student-icon').classList.add('violation');
+                    } else {
+                        // Fallback logic to add it once it renders (leaflet async rendering)
+                        marker.on('add', function(e) {
+                            if (e.target._icon && e.target._icon.querySelector('.custom-student-icon')) {
+                                e.target._icon.querySelector('.custom-student-icon').classList.add('violation');
+                            }
+                        });
+                    }
+                }
+
                 const item = document.createElement('div');
                 item.className = 'student-drag-item';
+                if (isViolation) item.style.borderLeft = '3px solid #ef4444';
                 item.dataset.studentJson = JSON.stringify(s);
                 item.innerHTML = `
                     <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
                     <div style="flex:1;">
-                        <div style="font-size:0.9rem; font-weight:600; color:#1e293b;">${s.name}</div>
+                        <div style="font-size:0.9rem; font-weight:600; color:${isViolation ? '#ef4444' : '#1e293b'};">${s.name} ${isViolation ? '⚠️' : ''}</div>
                         <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${s.address}</div>
                     </div>
                     <div>
-                        <div class="time-pill">${s.pickup_time || '-'}</div>
+                        <div class="time-pill" style="${isViolation ? 'background:#fef2f2; color:#ef4444;' : ''}">${s.pickup_time || '-'}</div>
                     </div>
                 `;
                 listDiv.appendChild(item);
@@ -1821,16 +2387,11 @@
                     })
                         .addTo(map)
                         .bindPopup(`<b>${data.result_json.school.name}</b><br>${data.result_json.school.address}`);
-
-                    document.getElementById('schoolInfo').innerHTML =
-                        `<div style="font-weight:600; color:#166534;">🏫 ${data.result_json.school.name}</div>
-                         <div style="font-size:0.8rem; color:#15803d;">${data.result_json.school.address}</div>`;
                 }
 
                 if (data.result_json.all_students) {
                     // Restore students list
                     // Use a temporary global variable or just re-render markers
-                    // For now, let's re-render markers and table
                     const restoredStudents = data.result_json.all_students;
 
                     // Clear old markers
@@ -1839,37 +2400,60 @@
                     }
                     markers = {};
 
-                    // Re-plot students
-                    restoredStudents.forEach(student => {
-                        const marker = L.circleMarker([student.latitude, student.longitude], {
-                            radius: 6,
-                            fillColor: '#3b82f6',
-                            color: '#fff',
-                            weight: 2,
-                            opacity: 1,
-                            fillOpacity: 0.8
-                        }).addTo(map);
-
-                        marker.bindPopup(`<b>${student.name}</b><br>${student.address}`);
-                        markers[student.id] = marker;
+                    // Group students by coordinates
+                    const groupedStudents = {};
+                    restoredStudents.forEach(s => {
+                        const key = `${s.latitude.toFixed(5)},${s.longitude.toFixed(5)}`;
+                        if (!groupedStudents[key]) groupedStudents[key] = [];
+                        groupedStudents[key].push(s);
                     });
 
-                    document.getElementById('totalStudents').innerText = restoredStudents.length;
+                    // Re-plot students using the grouped logic
+                    Object.values(groupedStudents).forEach(group => {
+                        const count = group.length;
+                        const s = group[0];
+                        
+                        let badgeHtml = '';
+                        if (count > 1) {
+                            badgeHtml = `<div style="position:absolute; top:-5px; right:-5px; background:#ef4444; color:white; border-radius:50%; width:16px; height:16px; font-size:10px; display:flex; align-items:center; justify-content:center; font-weight:bold; border:1px solid white; z-index:1000;">${count}</div>`;
+                        }
 
-                    // Update table (simplified re-render)
-                    const tbody = document.getElementById('studentsTableBody');
-                    tbody.innerHTML = restoredStudents.map(s => `
-                        <tr>
-                            <td><input type="checkbox" class="student-select" value="${s.id}"></td>
-                            <td>${s.name}</td>
-                            <td><span class="status-badge status-unassigned">Restored</span></td>
-                            <td>-</td>
-                            <td>
-                                <button onclick="map.setView([${s.latitude}, ${s.longitude}], 16)" 
-                                    style="border:none; background:none; cursor:pointer;">📍</button>
-                            </td>
-                        </tr>
-                    `).join('');
+                        const iconHtml = `<div class="custom-student-icon" style="position:relative;">
+                            <i class="fas fa-user-graduate"></i>
+                            ${badgeHtml}
+                        </div>`;
+
+                        const marker = L.marker([s.latitude, s.longitude], {
+                            icon: L.divIcon({
+                                className: 'student-marker-container',
+                                html: iconHtml,
+                                iconSize: [28, 28],
+                                iconAnchor: [14, 14],
+                                popupAnchor: [0, -14]
+                            })
+                        }).addTo(map);
+
+                        // Build popup content
+                        let popupContent = `<b>${s.address || 'Address'}</b><hr style="margin:4px 0; border:0; border-top:1px solid #ccc;">`;
+                        popupContent += `<ul style="margin:0; padding-left:16px; font-size:0.9rem;">`;
+                        group.forEach(st => {
+                            popupContent += `<li>${st.name}</li>`;
+                        });
+                        popupContent += `</ul>`;
+
+                        marker.bindPopup(popupContent);
+                        
+                        markers[s.id || s.name] = marker;
+                        if (count > 1) {
+                            group.forEach(st => {
+                                markers[st.id || st.name] = marker;
+                            });
+                        }
+                    });
+
+                    if (document.getElementById('totalStudents')) {
+                        document.getElementById('totalStudents').innerText = restoredStudents.length;
+                    }
                 }
 
                 // Display new routes (This creates the DOM elements)
@@ -1929,10 +2513,26 @@
     }
 
     // Initialize (Load Students on start, verify tab)
-    (function init() {
-        // Ensure Setup tab is active
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedRoutesData = sessionStorage.getItem('optimizedRoutesFullData');
+        if (savedRoutesData) {
+            try {
+                const data = JSON.parse(savedRoutesData);
+                if (data && data.routes && data.routes.length > 0) {
+                    setTimeout(() => {
+                        displayRoutes(data);
+                        switchTab('results');
+                    }, 200); // slight delay to ensure map/markers are ready
+                    return;
+                }
+            } catch (e) {
+                console.error('Error restoring routes from sessionStorage', e);
+            }
+        }
+        
+        // Ensure Setup tab is active if no saved data
         switchTab('setup');
-    })();
+    });
 
 </script>
 {% endblock %}

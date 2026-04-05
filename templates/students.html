@@ -377,12 +377,34 @@
     let searchTimeout;
     let selectedAddress = null;
     let allStudentsData = [];
-    let studentClusterMap = {};  // Will be empty on this page (cluster data is on Route Planning page)
+    let studentClusterMap = {};  // Loaded from sessionStorage
 
     document.addEventListener('DOMContentLoaded', () => {
+        loadAssignmentData();
         loadStudents();
         setupSearch();
     });
+
+    function loadAssignmentData() {
+        try {
+            const savedRoutes = sessionStorage.getItem('latestRoutes');
+            if (savedRoutes) {
+                const routes = JSON.parse(savedRoutes);
+                routes.forEach((r, idx) => {
+                    if (r.students) {
+                        r.students.forEach(st => {
+                            studentClusterMap[st.name] = { 
+                                routeIndex: idx, 
+                                busName: r.bus_number || r.vehicle_plate || `Bus ${idx + 1}` 
+                            };
+                        });
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Error loading assignment data from sessionStorage', e);
+        }
+    }
 
     // ---- Load & Render Students ----
     async function loadStudents() {
@@ -414,7 +436,7 @@
             if (isAssigned) assignedCount++;
 
             const statusClass = isAssigned ? 'status-assigned' : 'status-unassigned';
-            const statusText = isAssigned ? 'Assigned' : 'Unassigned';
+            const statusText = isAssigned ? `Assigned (${clusterInfo.busName})` : 'Unassigned';
 
             return `
                 <tr data-id="${s.id}" data-status="${isAssigned ? 'assigned' : 'unassigned'}">

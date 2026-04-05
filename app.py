@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
+from onemap_utils import get_onemap_token
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -35,15 +37,21 @@ class RouteSegment:
     distance: float
     duration: float  # in seconds
 
-# Get API key from environment variable (secure)
-API_KEY = os.environ.get('ONEMAP_API_KEY')
+def get_api_key():
+    """Dynamically fetch the OneMap API key (handles auto-reset)"""
+    try:
+        return get_onemap_token()
+    except Exception as e:
+        print(f"Error getting OneMap token: {e}")
+        return None
 
-if not API_KEY:
-    raise ValueError(
-        "ONEMAP_API_KEY environment variable not set!\n"
-        "Please create a .env file with your API key or set the environment variable.\n"
-        "Get your API key from: https://www.onemap.gov.sg/apidocs/"
-    )
+# Initial check for API credentials
+if not os.environ.get('ONEMAP_API_KEY') and not (os.environ.get('ONEMAP_EMAIL') and os.environ.get('ONEMAP_PASSWORD')):
+    print("WARNING: OneMap credentials not set! Please configure ONEMAP_EMAIL and ONEMAP_PASSWORD in .env")
+
+# Legacy constant for backwards compatibility where necessary
+# But we should prefer get_api_key()
+API_KEY = get_api_key()
 
 # In-memory storage (will use database later)
 students = []
@@ -113,6 +121,12 @@ def load_students_from_csv():
     
     return loaded_students
 
+@app.before_request
+def refresh_api_key():
+    """Ensure API_KEY is fresh before each request"""
+    global API_KEY
+    API_KEY = get_api_key()
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -137,8 +151,13 @@ def search_address():
         'getAddrDetails': 'Y',
         'pageNum': 1
     }
+    
+    key = get_api_key()
+    if not key:
+        return jsonify({'error': 'OneMap API key not configured'}), 500
+        
     headers = {
-        'Authorization': API_KEY
+        'Authorization': key
     }
     
     try:
@@ -260,7 +279,6 @@ def analyze_clusters():
         'isolated': isolated,
         'n_clusters': analysis.get('n_clusters', 0),
         'n_noise': analysis.get('n_noise', 0),
-        'recommended_buses': analysis.get('recommended_buses', 1),
         'recommendation': analysis.get('recommendation', '')
     }
     
@@ -305,7 +323,6 @@ def analyze_clusters_endpoint():
         'n_clusters': result.get('n_clusters', len(clusters)),
         'clusters': clusters,
         'isolated_students': isolated,
-        'recommended_buses': result.get('recommended_buses', 1),
         'total_students': len(students)
     })
 
@@ -348,15 +365,16 @@ def optimise_routes_endpoint():
         # Fetch active vehicles for fleet-aware optimization
         # We need them primarily for capacities, but will use their IDs for assignment later
         active_vehicles = Vehicle.query.filter_by(status='active').order_by(Vehicle.id).all()
-        
-        # Extract capacities (default to 40 if 0/None)
-        fleet_capacities = [v.capacity if v.capacity and v.capacity > 0 else 40 for v in active_vehicles]
-        
+
+        max_buses = len(active_vehicles) if active_vehicles else 1
+
+        # Extract capacities (use the to_dict() logic which correctly checks VehicleType)
+        fleet_capacities = [v.to_dict()['capacity'] for v in active_vehicles]
+
         # Pass fleet_capacities to optimizer
-        result = optimize_routes(school_location, students, max_buses, API_KEY, 
+        result = optimize_routes(school_location, students, max_buses, API_KEY,
                                 school_arrival_seconds, max_ride_time,
-                                fleet_capacities=fleet_capacities)
-        
+                                fleet_capacities=fleet_capacities)        
         # Inject context for saving/restoring history
         result['school'] = school_location
         result['all_students'] = students
@@ -368,37 +386,54 @@ def optimise_routes_endpoint():
         traceback.print_exc()
         result = {'error': str(e), 'routes': []}
     
-    # --- Assign Real Bus IDs ---
+    # --- Assign Real Bus IDs (Smart Capacity Matching) ---
     try:
         if result.get('routes'):
-            # Fetch active vehicles (if not already fetched above, but strictly we should use the same list)
-            # We already fetched 'active_vehicles' above.
+            # Fetch active vehicles
+            active_vehicles = Vehicle.query.filter_by(status='active').all()
             
-            for i, route in enumerate(result['routes']):
-                # Determine which vehicle from the fleet this route belongs to
-                # The optimizer returns 'vehicle_index' if it used a specific fleet vehicle.
-                # If missing (legacy/fallback), assume 1:1 mapping with loop index.
-                fleet_idx = route.get('vehicle_index', i)
+            # Create a pool of available vehicles, sorting by capacity ascending
+            # This allows us to pick the smallest bus that fits the route
+            available_vehicles = sorted([v.to_dict() for v in active_vehicles], key=lambda x: x['capacity'])
+            
+            # Sort routes by student count descending so we fulfill the biggest routes first
+            routes_sorted = sorted(result['routes'], key=lambda r: r.get('student_count', len(r.get('students', []))), reverse=True)
+            
+            for i, route in enumerate(routes_sorted):
+                student_count = route.get('student_count', len(route.get('students', [])))
                 
-                # If we have a real vehicle available at this index
-                if 0 <= fleet_idx < len(active_vehicles):
-                    vehicle = active_vehicles[fleet_idx]
+                # Find the smallest available vehicle that can hold the students
+                matched_vehicle = None
+                for j, v in enumerate(available_vehicles):
+                    if v['capacity'] >= student_count:
+                        matched_vehicle = available_vehicles.pop(j)
+                        break
+                
+                # If no vehicle is large enough, just take the largest available
+                if not matched_vehicle and available_vehicles:
+                    matched_vehicle = available_vehicles.pop(-1)
+                
+                if matched_vehicle:
                     route['bus_number'] = f"Bus {i + 1}"
-                    route['vehicle_plate'] = vehicle.plate_number
-                    route['vehicle_id'] = vehicle.id
-                    route['vehicle_capacity'] = vehicle.capacity
+                    route['vehicle_plate'] = matched_vehicle['plate_number']
+                    route['vehicle_id'] = matched_vehicle['id']
+                    route['vehicle_capacity'] = matched_vehicle['capacity']
                 else:
-                    # Fallback for virtual/extra buses
+                    # Fallback for virtual/extra buses if we ran out of fleet
                     route['bus_number'] = f"Bus {i + 1}"
                     route['vehicle_plate'] = "Pending"
                     route['vehicle_id'] = ""
+                    route['vehicle_capacity'] = 40
+            
+            # Sort back to original (or some sensible order) so UI looks consistent
+            # The UI sorts by distance or time, so it doesn't matter too much, but let's keep it sorted by pax
+            result['routes'] = routes_sorted
             
             print(f"Assigned real vehicles to {len(result['routes'])} routes.")
     except Exception as e:
         print(f"Error assigning vehicle IDs: {e}")
         import traceback
         traceback.print_exc()
-        # Ensure result is still returned even if assignment fails
     # ---------------------------
     
     return jsonify(result)
@@ -431,6 +466,37 @@ def recalculate_routes_endpoint():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/fetch-geometry', methods=['POST'])
+def fetch_geometry_endpoint():
+    """Fetch real road geometry for a single route on-demand"""
+    from route_optimizer import enrich_routes_with_geometry
+
+    data = request.json
+    route = data.get('route')
+    school_time = data.get('school_time', '07:30')
+    max_ride_time = int(data.get('max_ride_time', 60))
+
+    if not route:
+        return jsonify({'error': 'Route data is required'}), 400
+
+    api_key = get_api_key()
+    if not api_key:
+        return jsonify({'error': 'OneMap API key not configured'}), 500
+
+    # Parse school time
+    time_parts = school_time.split(':')
+    arrival_seconds = int(time_parts[0]) * 3600 + int(time_parts[1]) * 60
+
+    try:
+        enriched_routes = enrich_routes_with_geometry([route], api_key, arrival_seconds, max_ride_time)
+        return jsonify({'route': enriched_routes[0]})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error fetching geometry: {e}")
         return jsonify({'error': str(e)}), 500
 
 
