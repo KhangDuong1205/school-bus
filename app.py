@@ -337,6 +337,12 @@ def optimise_routes_endpoint():
     school_time = data.get('school_time', '07:30')  # Default 7:30 AM
     max_ride_time = int(data.get('max_ride_time', 60))  # Default 60 minutes
     
+    # Advanced parameters
+    service_time = int(data.get('service_time', 60))
+    avg_speed = int(data.get('avg_speed', 50))
+    base_bus_cost = 5000  # Hardcoded default
+    penalty_per_seat = 200  # Hardcoded default
+    
     # Convert school_time (HH:MM) to seconds from midnight
     try:
         hours, minutes = map(int, school_time.split(':'))
@@ -371,10 +377,19 @@ def optimise_routes_endpoint():
         # Extract capacities (use the to_dict() logic which correctly checks VehicleType)
         fleet_capacities = [v.to_dict()['capacity'] for v in active_vehicles]
 
-        # Pass fleet_capacities to optimizer
+        # Package advanced parameters
+        advanced_params = {
+            'service_time': service_time,
+            'avg_speed': avg_speed,
+            'base_bus_cost': base_bus_cost,
+            'penalty_per_seat': penalty_per_seat
+        }
+
+        # Pass fleet_capacities and advanced_params to optimizer
         result = optimize_routes(school_location, students, max_buses, API_KEY,
                                 school_arrival_seconds, max_ride_time,
-                                fleet_capacities=fleet_capacities)        
+                                fleet_capacities=fleet_capacities,
+                                advanced_params=advanced_params)
         # Inject context for saving/restoring history
         result['school'] = school_location
         result['all_students'] = students
@@ -513,6 +528,61 @@ def load_students_csv_endpoint():
         'loaded': len(loaded),
         'total_students': len(students)
     })
+
+@app.route('/api/upload-students-csv', methods=['POST'])
+def upload_students_csv_endpoint():
+    """Handle custom CSV uploads"""
+    global students
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+        
+    if file and file.filename.endswith('.csv'):
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        reader = csv.DictReader(stream)
+        loaded_students = []
+        
+        start_id = len(students) + 1
+        for idx, row in enumerate(reader, start=start_id):
+            student_id = row.get('student_id', row.get('ID', str(idx)))
+            name = row.get("Sender's first name", row.get('Name', row.get('name', row.get('student_name', ''))))
+            address = row.get('Pick-up address line 1', '')
+            address_2 = row.get('Pick-up address line 2', '')
+            if address_2 and address_2 != 'Null':
+                address = f"{address}, {address_2}"
+            remark = row.get('remark', row.get('Remark', ''))
+            latitude = row.get('latitude', row.get('Pick-up latitude', ''))
+            longitude = row.get('longitude', row.get('Pick-up longitude', ''))
+            
+            if not latitude or not longitude:
+                continue
+            
+            try:
+                student = {
+                    'id': idx,
+                    'student_id': student_id,
+                    'name': name,
+                    'address': address,
+                    'postal': '',
+                    'address_note': remark,
+                    'latitude': float(latitude),
+                    'longitude': float(longitude),
+                    'family_code': str(row.get('family_code', row.get('Family Code', ''))),
+                    'special_needs': str(row.get('special_needs', row.get('Special Needs', ''))).lower() in ['true', 'yes', '1', 'y']
+                }
+                loaded_students.append(student)
+            except ValueError:
+                continue
+                
+        students.extend(loaded_students)
+        return jsonify({
+            'success': True,
+            'loaded': len(loaded_students),
+            'total_students': len(students)
+        })
+    return jsonify({'error': 'Invalid file format'}), 400
 
 
 @app.route('/api/cache/stats', methods=['GET'])

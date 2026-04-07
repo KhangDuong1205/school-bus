@@ -10,7 +10,7 @@
         height: 100vh;
         display: flex;
         flex-direction: column;
-        background: #f8fafc;
+        background: var(--surface-page);
     }
     
     .page-header {
@@ -21,67 +21,75 @@
     }
     
     .page-title {
-        font-size: 1.5rem;
+        font-size: 1.35rem;
         font-weight: 700;
-        color: #1e293b;
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         gap: 12px;
+        letter-spacing: -0.02em;
     }
     
     .table-container {
         flex: 1;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-        border: 1px solid #e2e8f0;
+        background: var(--surface-card);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-md);
+        border: 1px solid var(--border-default);
         overflow: auto;
     }
     
     table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
     
     th {
-        background: #f1f5f9;
-        padding: 16px;
+        background: var(--surface-page);
+        padding: 14px 16px;
         text-align: left;
         font-weight: 600;
-        color: #475569;
+        color: var(--text-secondary);
         position: sticky;
         top: 0;
         z-index: 10;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
     }
     
     td {
         padding: 14px 16px;
-        border-bottom: 1px solid #f1f5f9;
-        color: #334155;
+        border-bottom: 1px solid var(--border-light);
+        color: var(--text-primary);
     }
     
     tr:hover td {
-        background: #f8fafc;
+        background: var(--surface-page);
     }
     
     .btn-primary {
-        background: #10b981;
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
         color: white;
         border: none;
         padding: 10px 20px;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         font-weight: 600;
         cursor: pointer;
         display: flex;
         align-items: center;
         gap: 8px;
-        transition: background 0.2s;
+        transition: all var(--transition-base);
+        font-family: var(--font-family);
+        font-size: 0.875rem;
+        box-shadow: 0 1px 3px rgba(5, 150, 105, 0.3);
     }
     
     .btn-primary:hover {
-        background: #059669;
+        background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+        transform: translateY(-1px);
     }
 
     .badge {

@@ -10,20 +10,21 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 30px;
-        padding: 30px 40px 0;
+        margin-bottom: 28px;
+        padding: 28px 40px 0;
     }
 
     .page-title {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: #1e293b;
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
     }
 
     .page-desc {
-        color: #64748b;
+        color: var(--text-tertiary);
         margin-top: 5px;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
 
     /* CONTENT BODY */
@@ -58,21 +59,22 @@
     /* FILTER BUTTONS */
     .filter-btn {
         padding: 6px 14px;
-        border: 1px solid #e2e8f0;
-        border-radius: 6px;
-        background: white;
-        font-size: 0.85rem;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        background: var(--surface-card);
+        font-size: 0.82rem;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all var(--transition-base);
         font-weight: 500;
-        color: #475569;
+        color: var(--text-secondary);
+        font-family: var(--font-family);
     }
 
     .filter-btn:hover,
     .filter-btn.active {
-        background: #3b82f6;
+        background: var(--color-primary);
         color: white;
-        border-color: #3b82f6;
+        border-color: var(--color-primary);
     }
 
     /* SEARCH / ADD FORM */
@@ -80,19 +82,28 @@
         display: flex;
         gap: 10px;
         align-items: center;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 12px 16px;
+        background: var(--surface-page);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-lg);
+        padding: 14px 18px;
         margin-bottom: 20px;
+        box-shadow: var(--shadow-xs);
     }
 
     .add-student-bar input {
-        padding: 8px 12px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        font-size: 0.9rem;
-        color: #334155;
+        padding: 9px 12px;
+        border: 1.5px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        font-size: 0.875rem;
+        color: var(--text-primary);
+        font-family: var(--font-family);
+        transition: border-color var(--transition-base), box-shadow var(--transition-base);
+    }
+
+    .add-student-bar input:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
     }
 
     .add-student-bar .name-input {
@@ -126,53 +137,55 @@
         top: 100%;
         left: 0;
         right: 0;
-        background: white;
-        border: 1px solid #ddd;
+        background: var(--surface-card);
+        border: 1px solid var(--border-default);
         max-height: 240px;
         overflow-y: auto;
         z-index: 2000;
-        border-radius: 0 0 8px 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border-radius: 0 0 var(--radius-md) var(--radius-md);
+        box-shadow: var(--shadow-lg);
     }
 
     .autocomplete-item {
         padding: 10px 12px;
         cursor: pointer;
-        border-bottom: 1px solid #f1f5f9;
-        font-size: 0.9rem;
+        border-bottom: 1px solid var(--border-light);
+        font-size: 0.875rem;
+        transition: background var(--transition-fast);
     }
 
     .autocomplete-item:hover {
-        background: #f1f5f9;
+        background: var(--surface-page);
     }
 
     /* TABLE STYLES */
     .data-table {
         width: 100%;
-        background: white;
-        border-radius: 8px;
+        background: var(--surface-card);
+        border-radius: var(--radius-lg);
         overflow: hidden;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e2e8f0;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid var(--border-default);
         border-collapse: collapse;
     }
 
     .data-table th {
-        background: #f8fafc;
+        background: var(--surface-page);
         padding: 14px 20px;
         text-align: left;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         font-weight: 600;
-        color: #64748b;
+        color: var(--text-secondary);
         text-transform: uppercase;
-        border-bottom: 1px solid #e2e8f0;
+        letter-spacing: 0.04em;
+        border-bottom: 1px solid var(--border-default);
     }
 
     .data-table td {
         padding: 12px 20px;
-        border-bottom: 1px solid #f1f5f9;
-        color: #334155;
-        font-size: 0.9rem;
+        border-bottom: 1px solid var(--border-light);
+        color: var(--text-primary);
+        font-size: 0.875rem;
     }
 
     .data-table tr:last-child td {
@@ -180,7 +193,7 @@
     }
 
     .data-table tr:hover {
-        background: #f8fafc;
+        background: var(--surface-page);
     }
 
     /* STATUS BADGES */
@@ -204,59 +217,70 @@
 
     /* BUTTONS */
     .btn-primary {
-        background: #0ea5e9;
+        background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
         color: white;
         border: none;
         padding: 10px 20px;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         font-weight: 600;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        transition: all 0.2s;
+        transition: all var(--transition-base);
+        font-family: var(--font-family);
+        font-size: 0.875rem;
+        box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
     }
 
     .btn-primary:hover {
-        background: #0284c7;
+        background: linear-gradient(135deg, var(--color-primary-hover) 0%, #1e40af 100%);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+        transform: translateY(-1px);
     }
 
     .btn-add {
-        background: #3b82f6;
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         color: white;
         border: none;
-        padding: 8px 16px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        transition: all 0.2s;
-    }
-
-    .btn-add:hover {
-        background: #2563eb;
-    }
-
-    .btn-csv {
-        background: #10b981;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 6px;
+        padding: 9px 16px;
+        border-radius: var(--radius-md);
         cursor: pointer;
         font-weight: 600;
         font-size: 0.85rem;
+        font-family: var(--font-family);
         display: flex;
         align-items: center;
         gap: 6px;
-        transition: all 0.2s;
+        transition: all var(--transition-base);
+        box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-add:hover {
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+        transform: translateY(-1px);
+    }
+
+    .btn-csv {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        color: white;
+        border: none;
+        padding: 9px 16px;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.82rem;
+        font-family: var(--font-family);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all var(--transition-base);
+        box-shadow: 0 1px 3px rgba(5, 150, 105, 0.3);
     }
 
     .btn-csv:hover {
-        background: #059669;
+        background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+        transform: translateY(-1px);
     }
 
     .btn-delete {
@@ -279,20 +303,22 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 12px 20px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
+        padding: 14px 20px;
+        background: var(--surface-page);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-lg);
         margin-top: 16px;
-        font-size: 0.85rem;
-        color: #64748b;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+        box-shadow: var(--shadow-xs);
     }
 
     /* MESSAGE */
     .message {
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         margin-top: 6px;
         min-height: 1.2em;
+        color: var(--text-tertiary);
     }
 </style>
 {% endblock %}
@@ -304,8 +330,9 @@
         <p class="page-desc">Manage student records, add new students, and load from CSV.</p>
     </div>
     <div style="display: flex; gap: 10px;">
-        <button class="btn-csv" onclick="loadStudentsFromCSV()">
-            <i class="fas fa-file-csv"></i> Load CSV
+        <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="uploadStudentsCSV()">
+        <button class="btn-csv" onclick="document.getElementById('csvFileInput').click()">
+            <i class="fas fa-file-csv"></i> Upload CSV
         </button>
     </div>
 </div>
@@ -516,25 +543,39 @@
         loadStudents();
     }
 
-    // ---- CSV Load ----
-    async function loadStudentsFromCSV() {
-        const btn = document.querySelector('button[onclick="loadStudentsFromCSV()"]');
+    // ---- Custom CSV Upload ----
+    async function uploadStudentsCSV() {
+        const fileInput = document.getElementById('csvFileInput');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const btn = document.querySelector('button[onclick="document.getElementById(\'csvFileInput\').click()"]');
         const originalHTML = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
         btn.disabled = true;
 
+        const formData = new FormData();
+        formData.append('file', file);
+
         try {
-            const res = await fetch('/api/load-students-csv', { method: 'POST' });
+            const res = await fetch('/api/upload-students-csv', { 
+                method: 'POST',
+                body: formData
+            });
             const data = await res.json();
             if (data.success) {
-                alert(`Loaded ${data.loaded} new students!`);
+                alert(`Successfully loaded ${data.loaded} students!`);
                 loadStudents();
+            } else {
+                alert(data.error || 'Error uploading CSV');
             }
         } catch (e) {
-            alert('Error loading CSV');
+            console.error(e);
+            alert('Error uploading CSV');
         } finally {
             btn.innerHTML = originalHTML;
             btn.disabled = false;
+            fileInput.value = ''; // Reset input
         }
     }
 

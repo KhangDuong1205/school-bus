@@ -14,25 +14,26 @@
     }
 
     .settings-title {
-        font-size: 1.5rem;
+        font-size: 1.35rem;
         font-weight: 700;
-        color: #1e293b;
+        color: var(--text-primary);
         margin-bottom: 8px;
+        letter-spacing: -0.02em;
     }
 
     .settings-subtitle {
-        font-size: 0.9rem;
-        color: #64748b;
+        font-size: 0.85rem;
+        color: var(--text-tertiary);
         margin-bottom: 32px;
     }
 
     .settings-card {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
+        background: var(--surface-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-lg);
         padding: 24px;
         margin-bottom: 24px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        box-shadow: var(--shadow-sm);
     }
 
     .card-title {
@@ -58,16 +59,17 @@
     .search-input {
         width: 100%;
         padding: 12px 16px 12px 40px;
-        border: 2px solid #e2e8f0;
-        border-radius: 8px;
-        font-size: 0.95rem;
-        color: #334155;
-        transition: border-color 0.2s;
+        border: 1.5px solid var(--border-default);
+        border-radius: var(--radius-md);
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        font-family: var(--font-family);
+        transition: border-color var(--transition-base), box-shadow var(--transition-base);
         outline: none;
     }
 
     .search-input:focus {
-        border-color: #3b82f6;
+        border-color: var(--color-primary);
         box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
 
