@@ -28,6 +28,18 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
+# Pre-load the local OSM graph in a background thread so the first
+# "fetch geometry" request doesn't pay the ~3s graph-load cost.
+def _warm_local_routing():
+    try:
+        from local_routing import warmup
+        warmup()
+    except Exception as e:
+        print(f"[startup] local_routing warmup failed: {e}")
+
+import threading
+threading.Thread(target=_warm_local_routing, daemon=True).start()
+
 @dataclass
 class RouteSegment:
     from_lat: float
@@ -945,6 +957,86 @@ def export_routes_csv():
     except Exception as e:
         print(f"Export CSV Error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ============ AI Chat Endpoint ============
+
+@app.route('/api/chat', methods=['POST'])
+def chat_endpoint():
+    """
+    Natural-language route editor backed by Gemini.
+
+    Body:
+      {
+        "message": "...",
+        "routes":  [...current routes...],
+        "history": [{role, text}, ...],   # optional, last ~10 turns
+        "model":   "gemini-2.5-flash" | "gemini-2.5-pro",
+        "school_time": "07:30",
+        "max_ride_time": 60
+      }
+    """
+    from chat_handler import run_chat, collect_warnings
+    from route_optimizer import recalculate_manually_adjusted_routes
+
+    data = request.json or {}
+    message = (data.get('message') or '').strip()
+    if not message:
+        return jsonify({'error': 'message is required'}), 400
+
+    incoming_routes = data.get('routes') or []
+    history = data.get('history') or []
+    model = data.get('model') or os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+    school_time = data.get('school_time', '07:30')
+    max_ride_time = int(data.get('max_ride_time', 60))
+
+    try:
+        result = run_chat(message, incoming_routes, history, model_name=model)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Chat failed: {e}'}), 500
+
+    if result.get('error'):
+        return jsonify({'error': result['error']}), 500
+
+    updated_routes = result.get('updated_routes', incoming_routes)
+
+    # Recalculate times/distances if any mutation succeeded
+    recalculated = updated_routes
+    if result.get('needs_recalc') and school_location:
+        try:
+            hours, minutes = map(int, school_time.split(':'))
+            school_arrival_seconds = hours * 3600 + minutes * 60
+        except Exception:
+            school_arrival_seconds = 27000
+
+        try:
+            recalculated = recalculate_manually_adjusted_routes(
+                updated_routes, school_location, API_KEY,
+                school_arrival_seconds, max_ride_time
+            )
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'ai_message': result.get('ai_message'),
+                'tool_calls': result.get('tool_calls'),
+                'routes': updated_routes,
+                'warnings': [f'Recalculation failed: {e}'],
+                'clarification': result.get('clarification'),
+            }), 200
+
+    warnings = collect_warnings(recalculated, max_ride_time) if result.get('needs_recalc') else []
+
+    return jsonify({
+        'ai_message': result.get('ai_message'),
+        'tool_calls': result.get('tool_calls'),
+        'routes': recalculated,
+        'warnings': warnings,
+        'clarification': result.get('clarification'),
+        'recalculated': bool(result.get('needs_recalc')),
+    })
 
 
 if __name__ == '__main__':

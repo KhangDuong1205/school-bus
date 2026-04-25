@@ -415,51 +415,56 @@ def build_distance_and_time_matrices(school: Dict, students: List[Dict], api_key
     return distance_matrix, time_matrix
 
 
-def get_real_route_geometry_for_segments(route_segments: List[Dict], api_key: str) -> List[Dict]:
+def get_real_route_geometry_for_segments(route_segments: List[Dict], api_key: str = None) -> List[Dict]:
     """
-    Get real road geometry from OneMap for route segments
-    Called AFTER optimization to display real roads on map
+    Get real road geometry for route segments using local OSM data (OSMnx).
+    Called AFTER optimization to display real roads on the map.
+
+    The `api_key` argument is kept for backwards compatibility but ignored — we
+    no longer hit OneMap for routing geometry. OneMap is still used elsewhere
+    for address search and reverse geocoding.
     """
-    print(f"Fetching road geometry for {len(route_segments)} segments using OneMap...", flush=True)
-    
-    enriched_segments = []
-    for i, segment in enumerate(route_segments):
-        # Sequential processing with small delay to strictly respect rate limits
-        # and ensure prints are flushed to CMD
-        time.sleep(0.2)
+    from concurrent.futures import ThreadPoolExecutor
+    from local_routing import get_route_local, get_graph
+
+    # Pre-load the graph once (no-op if already loaded) so worker threads share it
+    get_graph()
+
+    n = len(route_segments)
+    print(f"Fetching road geometry for {n} segments via local OSM graph...", flush=True)
+
+    def route_one(item):
+        i, segment = item
         try:
             p_from = segment['from']
             p_to = segment['to']
-            
             from_lat = p_from.get('lat') or p_from.get('latitude')
             from_lng = p_from.get('lng') or p_from.get('longitude')
             to_lat = p_to.get('lat') or p_to.get('latitude')
             to_lng = p_to.get('lng') or p_to.get('longitude')
-            
-            if not from_lat or not from_lng or not to_lat or not to_lng:
-                print(f"  SEGMENT ERROR: Missing coords for index {i}", flush=True)
-                enriched_segments.append(segment)
-                continue
 
-            print(f"  Fetching segment {i+1}/{len(route_segments)}...", end="\r", flush=True)
-            
-            # Get real route from OneMap
-            distance_km, time_s, geometry = get_route_from_onemap(
-                from_lat, from_lng, to_lat, to_lng, api_key
+            if not (from_lat and from_lng and to_lat and to_lng):
+                return i, segment
+
+            distance_km, time_s, geometry = get_route_local(
+                from_lat, from_lng, to_lat, to_lng
             )
-            
-            # Update segment with real data
             segment['geometry'] = geometry
             segment['distance'] = distance_km
             segment['time'] = time_s
-            
-            enriched_segments.append(segment)
+            return i, segment
         except Exception as e:
             print(f"\n  Segment {i} failed: {e}", flush=True)
-            enriched_segments.append(segment)
-    
-    print("\nRoad geometry fetched.", flush=True)
-    return enriched_segments
+            return i, segment
+
+    enriched = [None] * n
+    # NetworkX read-only Dijkstra is thread-safe; 8 workers is plenty
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for i, seg in ex.map(route_one, list(enumerate(route_segments))):
+            enriched[i] = seg
+
+    print(f"Road geometry fetched ({n} segments).", flush=True)
+    return enriched
 
 def get_postal_code(lat: float, lng: float, api_key: str) -> str:
     """
@@ -819,7 +824,7 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
         to_node = manager.IndexToNode(to_index)
         
         node_demand = demands[to_node] if (demands is not None and to_node > 0) else (1 if to_node > 0 else 0)
-        pickup_time = advanced_params['service_time'] * node_demand if to_node > 0 else 0
+        pickup_time = advanced_params['service_time'] + (node_demand - 1) * 15 if to_node > 0 and node_demand > 0 else 0
         
         if from_node == 0 and to_node > 0:
             return pickup_time  # Just pickup time for OVRP start
@@ -863,7 +868,7 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
             direct_travel_time = int(time_hours * 3600)
             
         node_demand = demands[node_index] if demands else 1
-        service_time = advanced_params['service_time'] * node_demand
+        service_time = advanced_params['service_time'] + (node_demand - 1) * 15 if node_demand > 0 else 0
         
         min_possible_time = direct_travel_time + service_time
         
@@ -1049,18 +1054,19 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
                 service_time = advanced_params['service_time'] if advanced_params else 60
                 
                 route_distance += distance_km
-                route_time += time_s + (service_time * node_demand)
+                total_pickup_time = service_time + (node_demand - 1) * 15 if node_demand > 0 else 0
+                route_time += time_s + total_pickup_time
                 cumulative_time += time_s
                 
                 # Store data for EACH individual student in the super node
-                for act_student in super_node.get('grouped_students', [super_node]):
+                for i, act_student in enumerate(super_node.get('grouped_students', [super_node])):
                     temp_route_data.append({
                         'student': act_student,
                         'relative_pickup_time': cumulative_time,
                         'segment_from': students[node_index - 1] if node_index > 0 else None,
                         'segment_to': act_student
                     })
-                    cumulative_time += service_time
+                    cumulative_time += service_time if i == 0 else 15
                 
                 # Add ONE segment to this location
                 prev_student = students[node_index - 1] if node_index > 0 else None

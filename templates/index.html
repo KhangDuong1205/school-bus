@@ -766,6 +766,331 @@
         letter-spacing: 0.06em;
         margin-top: 4px;
     }
+
+    /* ============================================
+       AI CHAT PANEL — technical / professional
+       ============================================ */
+    .chat-fab {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        color: var(--accent-color);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(56, 189, 248, 0.08);
+        cursor: pointer;
+        z-index: 4000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        transition: transform var(--transition-base), box-shadow var(--transition-base);
+    }
+    .chat-fab:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.45), 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+    .chat-fab.hidden { display: none; }
+
+    .chat-panel {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 400px;
+        height: 600px;
+        max-height: calc(100vh - 48px);
+        background: var(--surface-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-lg);
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.04);
+        display: none;
+        flex-direction: column;
+        z-index: 4000;
+        overflow: hidden;
+        font-family: var(--font-family);
+    }
+    .chat-panel.open { display: flex; }
+
+    .chat-header {
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        color: var(--text-on-dark);
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid rgba(56, 189, 248, 0.12);
+    }
+    .chat-header-title {
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .chat-header-title .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #10b981;
+        box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+    }
+
+    .chat-model-toggle {
+        margin-left: auto;
+        display: inline-flex;
+        background: rgba(15, 23, 42, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: var(--radius-sm);
+        padding: 2px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .chat-model-toggle button {
+        padding: 4px 10px;
+        background: transparent;
+        border: none;
+        color: var(--text-muted-dark);
+        cursor: pointer;
+        border-radius: 4px;
+        font-family: var(--font-family);
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        transition: all var(--transition-fast);
+    }
+    .chat-model-toggle button.active {
+        background: var(--accent-color);
+        color: #0f172a;
+    }
+
+    .chat-header-actions {
+        display: flex;
+        gap: 4px;
+    }
+    .chat-header-actions button {
+        background: transparent;
+        border: none;
+        color: var(--text-muted-dark);
+        width: 26px;
+        height: 26px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.78rem;
+        transition: all var(--transition-fast);
+    }
+    .chat-header-actions button:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.08);
+        color: #e2e8f0;
+    }
+    .chat-header-actions button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+
+    .chat-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px;
+        background: var(--surface-page);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .chat-bubble {
+        max-width: 85%;
+        padding: 10px 12px;
+        border-radius: var(--radius-md);
+        font-size: 0.82rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    .chat-bubble.user {
+        align-self: flex-end;
+        background: var(--color-primary);
+        color: #fff;
+        border-bottom-right-radius: 2px;
+    }
+    .chat-bubble.assistant {
+        align-self: flex-start;
+        background: var(--surface-card);
+        border: 1px solid var(--border-default);
+        color: var(--text-primary);
+        border-bottom-left-radius: 2px;
+    }
+    .chat-bubble.system {
+        align-self: center;
+        font-size: 0.72rem;
+        color: var(--text-tertiary);
+        background: transparent;
+        padding: 4px 8px;
+    }
+
+    .chat-toolcalls {
+        margin-top: 8px;
+        border-top: 1px solid var(--border-light);
+        padding-top: 8px;
+        font-family: 'SF Mono', 'Consolas', monospace;
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+    }
+    .chat-toolcall {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 3px 0;
+    }
+    .chat-toolcall .tc-status {
+        width: 14px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+    .chat-toolcall.ok .tc-status { color: var(--color-success); }
+    .chat-toolcall.fail .tc-status { color: var(--color-danger); }
+    .chat-toolcall .tc-name {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    .chat-warnings {
+        margin-top: 8px;
+        background: var(--color-warning-light);
+        border-left: 3px solid var(--color-warning);
+        padding: 8px 10px;
+        font-size: 0.74rem;
+        color: #92400e;
+        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+    .chat-warnings ul { padding-left: 16px; margin-top: 4px; }
+
+    .chat-suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+    }
+    .chat-suggestion {
+        font-size: 0.72rem;
+        background: var(--surface-card);
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+        padding: 5px 10px;
+        border-radius: var(--radius-full);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+    .chat-suggestion:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+
+    .chat-typing {
+        align-self: flex-start;
+        display: inline-flex;
+        gap: 4px;
+        padding: 10px 12px;
+        background: var(--surface-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+    }
+    .chat-typing span {
+        width: 6px;
+        height: 6px;
+        background: var(--text-tertiary);
+        border-radius: 50%;
+        animation: chatDot 1.2s infinite ease-in-out;
+    }
+    .chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+    .chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes chatDot {
+        0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+        30% { opacity: 1; transform: translateY(-3px); }
+    }
+
+    .chat-footer {
+        border-top: 1px solid var(--border-default);
+        background: var(--surface-card);
+        padding: 10px 12px;
+    }
+    .chat-input-row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+    .chat-input {
+        flex: 1;
+        resize: none;
+        min-height: 36px;
+        max-height: 120px;
+        padding: 8px 10px;
+        font-family: var(--font-family);
+        font-size: 0.82rem;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        outline: none;
+        transition: border-color var(--transition-fast);
+        line-height: 1.4;
+    }
+    .chat-input:focus {
+        border-color: var(--color-primary);
+    }
+    .chat-send-btn {
+        width: 36px;
+        height: 36px;
+        background: var(--color-primary);
+        color: #fff;
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        transition: background var(--transition-fast);
+    }
+    .chat-send-btn:hover:not(:disabled) {
+        background: var(--color-primary-hover);
+    }
+    .chat-send-btn:disabled {
+        background: var(--text-tertiary);
+        cursor: not-allowed;
+    }
+    .chat-hint {
+        margin-top: 6px;
+        font-size: 0.68rem;
+        color: var(--text-tertiary);
+        font-family: 'SF Mono', 'Consolas', monospace;
+    }
+
+    .chat-disabled-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(248, 250, 252, 0.92);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        padding: 20px;
+        z-index: 10;
+    }
+
+    @media (max-width: 768px) {
+        .chat-panel {
+            width: calc(100vw - 16px);
+            height: calc(100vh - 80px);
+            right: 8px;
+            bottom: 8px;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -1009,6 +1334,58 @@
 
     <!-- MAP -->
     <div id="map"></div>
+
+    <!-- AI CHAT FAB (closed state) -->
+    <button class="chat-fab" id="chatFab" onclick="openChat()" title="AI Route Editor">
+        <i class="fas fa-terminal"></i>
+    </button>
+
+    <!-- AI CHAT PANEL (open state) -->
+    <div class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+            <div class="chat-header-title">
+                <span class="status-dot"></span>
+                <span>Route Editor</span>
+            </div>
+            <div class="chat-model-toggle" id="chatModelToggle">
+                <button data-model="gemini-2.5-flash" class="active" onclick="setChatModel('gemini-2.5-flash')" title="Fast, cheap">FLASH</button>
+                <button data-model="gemini-2.5-pro" onclick="setChatModel('gemini-2.5-pro')" title="Smartest, slower">PRO</button>
+            </div>
+            <div class="chat-header-actions">
+                <button id="chatUndoBtn" onclick="undoChatAction()" disabled title="Undo last change">
+                    <i class="fas fa-undo"></i>
+                </button>
+                <button onclick="clearChatHistory()" title="Clear conversation">
+                    <i class="fas fa-broom"></i>
+                </button>
+                <button onclick="closeChat()" title="Minimize">
+                    <i class="fas fa-minus"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="chat-body" id="chatBody">
+            <!-- Welcome / empty state injected by JS -->
+        </div>
+
+        <div class="chat-footer">
+            <div class="chat-input-row">
+                <textarea class="chat-input" id="chatInput" rows="1"
+                          placeholder="Describe a route change…"
+                          onkeydown="handleChatKeydown(event)"
+                          oninput="autoResizeChatInput(this)"></textarea>
+                <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+            <div class="chat-hint">enter = send · shift+enter = newline · refs by id or name</div>
+        </div>
+
+        <!-- Disabled overlay shown when no routes optimized yet -->
+        <div class="chat-disabled-overlay" id="chatDisabledOverlay" style="display:none;">
+            Run an optimisation first.<br>The editor needs an active route set to modify.
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -2494,6 +2871,49 @@
         }, 300);
     }
 
+    function highlightStudentOnMap(lat, lng, studentIdentifier) {
+        // Fly to the location smoothly
+        map.flyTo([lat, lng], 17, {
+            animate: true,
+            duration: 1.5
+        });
+
+        // Find the marker and open its popup
+        // The markers object is keyed by either student.id or student.name
+        const marker = markers[studentIdentifier];
+        if (marker) {
+            // Add a temporary highlight class to the marker's icon if it exists
+            if (marker._icon && marker._icon.querySelector('.custom-student-icon')) {
+                const iconDiv = marker._icon.querySelector('.custom-student-icon');
+                const originalBoxShadow = iconDiv.style.boxShadow;
+                
+                // Apply a pulsing glow effect
+                iconDiv.style.boxShadow = '0 0 0 0 rgba(139, 92, 246, 0.7)';
+                iconDiv.animate([
+                    { boxShadow: '0 0 0 0 rgba(139, 92, 246, 0.7)' },
+                    { boxShadow: '0 0 0 20px rgba(139, 92, 246, 0)' }
+                ], {
+                    duration: 1500,
+                    iterations: 3
+                });
+
+                // Open the popup after flying
+                setTimeout(() => {
+                    if (typeof marker.openPopup === 'function') {
+                        marker.openPopup();
+                    }
+                }, 1500);
+            } else {
+                // Standard leaflet marker fallback
+                setTimeout(() => {
+                    if (typeof marker.openPopup === 'function') {
+                        marker.openPopup();
+                    }
+                }, 1500);
+            }
+        }
+    }
+
     function displayRoutes(data) {
         console.log("Creating Routes Display:", data);
         optimizedRoutesData = data;
@@ -2694,7 +3114,7 @@
                 listDiv.innerHTML = '<div style="text-align:center; padding:12px; color:#94a3b8; font-size:0.8rem;">Empty Bus (Drag students here)</div>';
             }
             
-            // Group students by exact location (Super Nodes) to prevent splitting siblings
+            // Group students by exact location
             const locationGroups = {};
             students.forEach(s => {
                 const key = `${parseFloat(s.latitude).toFixed(5)},${parseFloat(s.longitude).toFixed(5)}`;
@@ -2741,22 +3161,55 @@
                 // Store the ENTIRE group of students in the dataset for backend recalculation
                 item.dataset.studentJson = JSON.stringify(group);
                 
-                let displayName = s.name;
+                let expandBtn = '';
+                let subStudentsHtml = '';
+                
                 if (group.length > 1) {
-                    displayName = `<span style="font-weight:700;">${s.name}</span> <span style="background:#e2e8f0; color:#475569; padding:2px 6px; border-radius:12px; font-size:0.7rem; margin-left:4px;">+ ${group.length - 1} more</span>`;
+                    expandBtn = `
+                        <button onclick="const el = document.getElementById('group-${i}-${idx}'); el.style.display = el.style.display === 'none' ? 'block' : 'none'; this.querySelector('i').classList.toggle('fa-chevron-down'); this.querySelector('i').classList.toggle('fa-chevron-up'); event.stopPropagation();" style="background:#e2e8f0; border:none; color:#475569; padding:2px 6px; border-radius:12px; font-size:0.7rem; cursor:pointer; margin-left:6px; display:inline-flex; align-items:center; gap:4px;">
+                            <i class="fas fa-chevron-down"></i> ${group.length - 1} more
+                        </button>
+                    `;
+                    
+                    subStudentsHtml = `
+                        <div id="group-${i}-${idx}" style="display:none; width:100%; margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1;">
+                            ${group.slice(1).map(st => {
+                                const stViolation = route.time_violations && route.time_violations.some(v => v.student === st.name);
+                                return `
+                                <div style="display:flex; align-items:center; margin-bottom:8px; padding-left:4px;">
+                                    <div style="flex:1; cursor:pointer;" onclick="highlightStudentOnMap(${st.latitude}, ${st.longitude}, '${st.id || st.name.replace(/'/g, "\\'")}')">
+                                        <div style="font-size:0.9rem; color:${stViolation ? '#ef4444' : '#1e293b'};"><span style="font-weight:700;">${st.name}</span> ${stViolation ? '⚠️' : ''}</div>
+                                    </div>
+                                    <button onclick="unassignSingleStudent(this, '${st.id || st.name.replace(/'/g, "\\'")}', event)" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1rem;" title="Unassign ${st.name}">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
                 }
                 
                 item.innerHTML = `
-                    <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
-                    <div style="flex:1;">
-                        <div style="font-size:0.9rem; color:${isViolation ? '#ef4444' : '#1e293b'};">${displayName} ${isViolation ? '⚠️' : ''}</div>
-                        <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${s.address}</div>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <div class="time-pill" style="${isViolation ? 'background:#fef2f2; color:#ef4444;' : ''}">${s.pickup_time || '-'}</div>
-                        <button onclick="unassignStudent(this)" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1rem;" title="Unassign">
-                            <i class="fas fa-times"></i>
-                        </button>
+                    <div class="drag-handle" title="Drag to reorder group">⋮⋮</div>
+                    <div style="flex:1; display:flex; flex-direction:column;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; width:100%;">
+                            <div style="flex:1; cursor:pointer;" onclick="highlightStudentOnMap(${s.latitude}, ${s.longitude}, '${s.id || s.name.replace(/'/g, "\\'")}')">
+                                <div style="font-size:0.9rem; color:${isViolation ? '#ef4444' : '#1e293b'};">
+                                    <span style="font-weight:700;" class="group-header-name">${s.name}</span> 
+                                    ${expandBtn} 
+                                    ${isViolation ? '⚠️' : ''}
+                                </div>
+                                <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${s.address}</div>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px; margin-left:8px;">
+                                <div class="time-pill" style="${isViolation ? 'background:#fef2f2; color:#ef4444;' : ''}">${s.pickup_time || '-'}</div>
+                                <button onclick="${group.length > 1 ? `unassignSingleStudent(this, '${s.id || s.name.replace(/'/g, "\\'")}', event, true)` : 'unassignStudent(this)'}" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1rem;" title="${group.length > 1 ? 'Unassign ' + s.name : 'Unassign'}">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        ${subStudentsHtml}
                     </div>
                 `;
                 listDiv.appendChild(item);
@@ -2800,6 +3253,98 @@
             `Generated ${data.routes.length} routes covering ${data.total_students} students.`;
     }
     
+    function unassignSingleStudent(btnElement, studentId, event, isHeader = false) {
+        if (isUndoing) return;
+        if (event) event.stopPropagation();
+
+        const item = btnElement.closest('.student-drag-item');
+        const fromList = item.parentElement;
+        
+        let group = JSON.parse(item.dataset.studentJson);
+        const studentIdx = group.findIndex(s => (s.id || s.name) === studentId);
+        
+        if (studentIdx === -1) return;
+        
+        // Remove student from group array
+        const removedStudent = group.splice(studentIdx, 1)[0];
+        
+        // Save action for undo
+        saveAction({
+            type: 'unassignSingle',
+            student: removedStudent,
+            groupJson: JSON.stringify(JSON.parse(item.dataset.studentJson)),
+            fromListId: fromList.id,
+            fromBusIndex: fromList.dataset.busIndex,
+            parentItem: item
+        });
+        
+        // Handle UI update based on remaining group size
+        if (group.length === 0) {
+            // Group empty, move the whole item to unassigned (or just remove it)
+            // It shouldn't happen usually since we remove single ones. But just in case.
+            const unassignedList = document.getElementById('unassignedList');
+            unassignedList.appendChild(item);
+        } else {
+            // Update group dataset
+            item.dataset.studentJson = JSON.stringify(group);
+            
+            if (isHeader) {
+                // If they removed the header student, promote the next student to header
+                const newHeader = group[0];
+                item.querySelector('.group-header-name').innerText = newHeader.name;
+                
+                // Remove the promoted student from the sub-list UI
+                const subLists = item.querySelectorAll('#group-' + fromList.dataset.busIndex + '-[0-9]+ div');
+                // The structure is nested, so we just remove the first row of the sublist
+                const subListContainer = item.querySelector('[id^="group-"]');
+                if (subListContainer && subListContainer.firstElementChild) {
+                    subListContainer.removeChild(subListContainer.firstElementChild);
+                }
+            } else {
+                // Just remove the row from the sub-list UI
+                btnElement.closest('div[style*="display:flex"]').remove();
+            }
+            
+            // Update the "X more" button text
+            const expandBtn = item.querySelector('button[onclick*="display"]');
+            if (expandBtn) {
+                if (group.length > 1) {
+                    const isExpanded = expandBtn.querySelector('i').classList.contains('fa-chevron-up');
+                    expandBtn.innerHTML = `<i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}"></i> ${group.length - 1} more`;
+                } else {
+                    expandBtn.remove();
+                }
+            }
+        }
+        
+        // Create a new independent item for the unassigned student
+        const unassignedList = document.getElementById('unassignedList');
+        const newItem = document.createElement('div');
+        newItem.className = 'student-drag-item';
+        newItem.dataset.studentJson = JSON.stringify([removedStudent]);
+        newItem.innerHTML = `
+            <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
+            <div style="flex:1;">
+                <div style="font-size:0.9rem; color:#1e293b;"><span style="font-weight:700;">${removedStudent.name}</span></div>
+                <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${removedStudent.address}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div class="time-pill">-</div>
+                <button onclick="unassignStudent(this)" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1rem;" title="Unassign">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        unassignedList.appendChild(newItem);
+
+        // Mark settings as changed and show toast
+        markSettingsChanged();
+        showUndoToast('Removed student from group');
+        
+        // Re-evaluate limits
+        evaluateCapacityLimits();
+    }
+
     function unassignStudent(btnElement) {
         if (isUndoing) return;
 
@@ -3356,16 +3901,304 @@
                         displayRoutes(data);
                         switchTab('results');
                     }, 200); // slight delay to ensure map/markers are ready
+                    initChat();
                     return;
                 }
             } catch (e) {
                 console.error('Error restoring routes from sessionStorage', e);
             }
         }
-        
+
         // Ensure Setup tab is active if no saved data
         switchTab('setup');
+        initChat();
     });
+
+    // ============================================================
+    // AI CHAT — Gemini-powered route editor
+    // ============================================================
+    const CHAT_HISTORY_KEY = 'chatHistory_v1';
+    const CHAT_MODEL_KEY = 'chatModel_v1';
+    const CHAT_MAX_HISTORY = 10;       // turns sent to backend
+    const CHAT_UNDO_DEPTH = 10;        // snapshots kept
+
+    let chatHistory = [];              // [{role:'user'|'assistant', text:'...'}]
+    let chatUndoStack = [];            // snapshots of optimizedRoutesData
+    let chatBusy = false;
+    let chatModel = 'gemini-2.5-flash';
+
+    function initChat() {
+        chatModel = localStorage.getItem(CHAT_MODEL_KEY) || 'gemini-2.5-flash';
+        document.querySelectorAll('#chatModelToggle button').forEach(b => {
+            b.classList.toggle('active', b.dataset.model === chatModel);
+        });
+        try {
+            const stored = sessionStorage.getItem(CHAT_HISTORY_KEY);
+            chatHistory = stored ? JSON.parse(stored) : [];
+        } catch (_) { chatHistory = []; }
+        renderChatBody();
+    }
+
+    function openChat() {
+        document.getElementById('chatPanel').classList.add('open');
+        document.getElementById('chatFab').classList.add('hidden');
+        updateChatAvailability();
+        setTimeout(() => {
+            document.getElementById('chatInput').focus();
+            scrollChatToBottom();
+        }, 50);
+    }
+
+    function closeChat() {
+        document.getElementById('chatPanel').classList.remove('open');
+        document.getElementById('chatFab').classList.remove('hidden');
+    }
+
+    function setChatModel(modelName) {
+        chatModel = modelName;
+        localStorage.setItem(CHAT_MODEL_KEY, modelName);
+        document.querySelectorAll('#chatModelToggle button').forEach(b => {
+            b.classList.toggle('active', b.dataset.model === modelName);
+        });
+    }
+
+    function updateChatAvailability() {
+        const ready = optimizedRoutesData && optimizedRoutesData.routes && optimizedRoutesData.routes.length > 0;
+        document.getElementById('chatDisabledOverlay').style.display = ready ? 'none' : 'flex';
+        document.getElementById('chatInput').disabled = !ready;
+        document.getElementById('chatSendBtn').disabled = !ready;
+    }
+
+    function autoResizeChatInput(el) {
+        el.style.height = 'auto';
+        el.style.height = Math.min(120, el.scrollHeight) + 'px';
+    }
+
+    function handleChatKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    }
+
+    function pushChatTurn(role, text, extras) {
+        const turn = { role, text };
+        if (extras) Object.assign(turn, extras);
+        chatHistory.push(turn);
+        if (chatHistory.length > CHAT_MAX_HISTORY * 2) {
+            chatHistory.splice(0, chatHistory.length - CHAT_MAX_HISTORY * 2);
+        }
+        sessionStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(chatHistory));
+        renderChatBody();
+    }
+
+    function renderChatBody() {
+        const body = document.getElementById('chatBody');
+        if (!body) return;
+        body.innerHTML = '';
+
+        if (chatHistory.length === 0) {
+            body.innerHTML = `
+                <div class="chat-bubble assistant">
+                    Natural-language route editor. Describe changes and I'll apply them.
+                    <div class="chat-suggestions">
+                        <span class="chat-suggestion" onclick="insertSuggestion(this)">move student S001 to bus 3</span>
+                        <span class="chat-suggestion" onclick="insertSuggestion(this)">swap A and B</span>
+                        <span class="chat-suggestion" onclick="insertSuggestion(this)">merge bus 2 into bus 5</span>
+                        <span class="chat-suggestion" onclick="insertSuggestion(this)">move 3 students from bus 4 to bus 6</span>
+                    </div>
+                </div>`;
+            return;
+        }
+
+        chatHistory.forEach(turn => {
+            const div = document.createElement('div');
+            div.className = `chat-bubble ${turn.role}`;
+            div.textContent = turn.text || '';
+
+            if (turn.toolCalls && turn.toolCalls.length) {
+                const wrap = document.createElement('div');
+                wrap.className = 'chat-toolcalls';
+                turn.toolCalls.forEach(tc => {
+                    const ok = tc.result && tc.result.ok;
+                    const row = document.createElement('div');
+                    row.className = 'chat-toolcall ' + (ok ? 'ok' : 'fail');
+                    const status = ok ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>';
+                    const summary = ok ? (tc.result.summary || '') : (tc.result && tc.result.error || 'failed');
+                    row.innerHTML = `<span class="tc-status">${status}</span><span><span class="tc-name">${tc.name}</span> — ${escapeHtml(summary)}</span>`;
+                    wrap.appendChild(row);
+                });
+                div.appendChild(wrap);
+            }
+
+            if (turn.warnings && turn.warnings.length) {
+                const wrap = document.createElement('div');
+                wrap.className = 'chat-warnings';
+                wrap.innerHTML = '<strong>Warnings</strong><ul>' +
+                    turn.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('') + '</ul>';
+                div.appendChild(wrap);
+            }
+
+            body.appendChild(div);
+        });
+
+        scrollChatToBottom();
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function scrollChatToBottom() {
+        const body = document.getElementById('chatBody');
+        if (body) body.scrollTop = body.scrollHeight;
+    }
+
+    function insertSuggestion(el) {
+        const input = document.getElementById('chatInput');
+        input.value = el.textContent.trim();
+        input.focus();
+        autoResizeChatInput(input);
+    }
+
+    function showTypingIndicator(show) {
+        const body = document.getElementById('chatBody');
+        let typing = document.getElementById('chatTyping');
+        if (show) {
+            if (!typing) {
+                typing = document.createElement('div');
+                typing.id = 'chatTyping';
+                typing.className = 'chat-typing';
+                typing.innerHTML = '<span></span><span></span><span></span>';
+                body.appendChild(typing);
+                scrollChatToBottom();
+            }
+        } else if (typing) {
+            typing.remove();
+        }
+    }
+
+    async function sendChatMessage() {
+        if (chatBusy) return;
+        const input = document.getElementById('chatInput');
+        const message = input.value.trim();
+        if (!message) return;
+
+        if (!optimizedRoutesData || !optimizedRoutesData.routes || optimizedRoutesData.routes.length === 0) {
+            pushChatTurn('assistant', 'No active route set. Run an optimisation first.');
+            return;
+        }
+
+        chatBusy = true;
+        document.getElementById('chatSendBtn').disabled = true;
+        input.value = '';
+        autoResizeChatInput(input);
+
+        pushChatTurn('user', message);
+        showTypingIndicator(true);
+
+        // Snapshot for undo BEFORE we mutate anything
+        const snapshot = JSON.parse(JSON.stringify(optimizedRoutesData));
+
+        // History sent to backend: drop the just-pushed user turn, take last N pairs
+        const sendHistory = chatHistory.slice(0, -1).slice(-CHAT_MAX_HISTORY * 2);
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message,
+                    routes: optimizedRoutesData.routes,
+                    history: sendHistory,
+                    model: chatModel,
+                    school_time: document.getElementById('schoolTime')?.value || '07:30',
+                    max_ride_time: document.getElementById('maxRideTime')?.value || 60
+                })
+            });
+            const data = await res.json();
+            showTypingIndicator(false);
+
+            if (!res.ok || data.error) {
+                pushChatTurn('assistant', 'Error: ' + (data.error || res.statusText));
+                return;
+            }
+
+            const applied = (data.tool_calls || []).some(tc => tc.result && tc.result.ok);
+            if (applied) {
+                chatUndoStack.push(snapshot);
+                if (chatUndoStack.length > CHAT_UNDO_DEPTH) chatUndoStack.shift();
+                document.getElementById('chatUndoBtn').disabled = false;
+
+                optimizedRoutesData.routes = data.routes;
+                displayRoutes(optimizedRoutesData);
+                pulseChangedBuses(data.tool_calls);
+            }
+
+            pushChatTurn('assistant', data.ai_message || '(no response)', {
+                toolCalls: data.tool_calls || [],
+                warnings: data.warnings || []
+            });
+        } catch (e) {
+            showTypingIndicator(false);
+            pushChatTurn('assistant', 'Network error: ' + e.message);
+        } finally {
+            chatBusy = false;
+            updateChatAvailability();
+        }
+    }
+
+    function pulseChangedBuses(toolCalls) {
+        const affected = new Set();
+        (toolCalls || []).forEach(tc => {
+            const a = tc.args || {};
+            if (typeof a.to_bus === 'number') affected.add(a.to_bus - 1);
+            if (typeof a.from_bus === 'number') affected.add(a.from_bus - 1);
+            if (typeof a.bus_number === 'number') affected.add(a.bus_number - 1);
+        });
+        affected.forEach(idx => {
+            const el = document.getElementById(`route-accordion-${idx}`);
+            if (!el) return;
+            el.style.transition = 'box-shadow 0.4s ease, background 0.4s ease';
+            const prevBg = el.style.background;
+            el.style.background = 'rgba(56, 189, 248, 0.12)';
+            el.style.boxShadow = '0 0 0 2px rgba(56, 189, 248, 0.4)';
+            setTimeout(() => {
+                el.style.background = prevBg;
+                el.style.boxShadow = '';
+            }, 1200);
+        });
+    }
+
+    function undoChatAction() {
+        if (chatUndoStack.length === 0) return;
+        const prev = chatUndoStack.pop();
+        optimizedRoutesData = prev;
+        currentRoutes = prev.routes;
+        sessionStorage.setItem('latestRoutes', JSON.stringify(prev.routes));
+        sessionStorage.setItem('optimizedRoutesFullData', JSON.stringify(prev));
+        displayRoutes(prev);
+        pushChatTurn('assistant', 'Reverted last change.');
+        document.getElementById('chatUndoBtn').disabled = chatUndoStack.length === 0;
+    }
+
+    function clearChatHistory() {
+        if (!confirm('Clear conversation history? Undo stack will also be reset.')) return;
+        chatHistory = [];
+        chatUndoStack = [];
+        sessionStorage.removeItem(CHAT_HISTORY_KEY);
+        document.getElementById('chatUndoBtn').disabled = true;
+        renderChatBody();
+    }
+
+    // Re-check chat availability whenever routes change
+    const _origDisplayRoutes = displayRoutes;
+    displayRoutes = function(data) {
+        _origDisplayRoutes(data);
+        updateChatAvailability();
+    };
 
 </script>
 {% endblock %}
