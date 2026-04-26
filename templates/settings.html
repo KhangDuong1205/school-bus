@@ -4,265 +4,63 @@
 
 {% block head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<style>
-    .settings-container {
-        max-width: 720px;
-        margin: 0 auto;
-        padding: 40px 24px;
-        overflow-y: auto;
-        height: 100%;
-    }
 
-    .settings-title {
-        font-size: 1.35rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        margin-bottom: 8px;
-        letter-spacing: -0.02em;
-    }
-
-    .settings-subtitle {
-        font-size: 0.85rem;
-        color: var(--text-tertiary);
-        margin-bottom: 32px;
-    }
-
-    .settings-card {
-        background: var(--surface-card);
-        border: 1px solid var(--border-default);
-        border-radius: var(--radius-lg);
-        padding: 24px;
-        margin-bottom: 24px;
-        box-shadow: var(--shadow-sm);
-    }
-
-    .card-title {
-        font-size: 1rem;
-        font-weight: 600;
-        color: #334155;
-        margin-bottom: 4px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .card-description {
-        font-size: 0.8rem;
-        color: #94a3b8;
-        margin-bottom: 16px;
-    }
-
-    .search-wrapper {
-        position: relative;
-    }
-
-    .search-input {
-        width: 100%;
-        padding: 12px 16px 12px 40px;
-        border: 1.5px solid var(--border-default);
-        border-radius: var(--radius-md);
-        font-size: 0.9rem;
-        color: var(--text-primary);
-        font-family: var(--font-family);
-        transition: border-color var(--transition-base), box-shadow var(--transition-base);
-        outline: none;
-    }
-
-    .search-input:focus {
-        border-color: var(--color-primary);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    }
-
-    .search-icon {
-        position: absolute;
-        left: 14px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #94a3b8;
-        font-size: 0.9rem;
-    }
-
-    .autocomplete-list {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 0 0 8px 8px;
-        max-height: 260px;
-        overflow-y: auto;
-        z-index: 100;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-        display: none;
-    }
-
-    .autocomplete-item {
-        padding: 10px 16px;
-        cursor: pointer;
-        border-bottom: 1px solid #f1f5f9;
-        transition: background 0.15s;
-    }
-
-    .autocomplete-item:hover {
-        background: #eff6ff;
-    }
-
-    .autocomplete-item:last-child {
-        border-bottom: none;
-    }
-
-    .autocomplete-item .item-name {
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: #1e293b;
-    }
-
-    .autocomplete-item .item-address {
-        font-size: 0.75rem;
-        color: #64748b;
-        margin-top: 2px;
-    }
-
-    .current-school {
-        display: flex;
-        align-items: flex-start;
-        gap: 16px;
-        padding: 16px;
-        background: #f0fdf4;
-        border: 1px solid #bbf7d0;
-        border-radius: 8px;
-    }
-
-    .current-school.not-set {
-        background: #fef3c7;
-        border-color: #fcd34d;
-    }
-
-    .current-school .school-icon {
-        font-size: 1.5rem;
-        flex-shrink: 0;
-    }
-
-    .current-school .school-details {
-        flex: 1;
-    }
-
-    .current-school .school-name {
-        font-weight: 600;
-        color: #166534;
-        font-size: 0.95rem;
-    }
-
-    .current-school.not-set .school-name {
-        color: #92400e;
-    }
-
-    .current-school .school-address {
-        font-size: 0.8rem;
-        color: #4ade80;
-        margin-top: 2px;
-    }
-
-    .current-school .school-coords {
-        font-size: 0.7rem;
-        color: #94a3b8;
-        margin-top: 4px;
-        font-family: monospace;
-    }
-
-    #schoolPreviewMap {
-        width: 100%;
-        height: 240px;
-        border-radius: 8px;
-        margin-top: 16px;
-        border: 1px solid #e2e8f0;
-    }
-
-    .success-toast {
-        position: fixed;
-        top: 24px;
-        right: 24px;
-        background: #10b981;
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        z-index: 9999;
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        transform: translateY(-20px);
-        opacity: 0;
-        transition: all 0.3s ease;
-    }
-
-    .success-toast.show {
-        transform: translateY(0);
-        opacity: 1;
-    }
-
-    .clear-btn {
-        margin-top: 12px;
-        padding: 8px 16px;
-        background: #fee2e2;
-        color: #dc2626;
-        border: 1px solid #fca5a5;
-        border-radius: 6px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .clear-btn:hover {
-        background: #fecaca;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
-<div class="settings-container">
-    <h1 class="settings-title"><i class="fas fa-cog" style="color:#64748b;"></i> Settings</h1>
-    <p class="settings-subtitle">Configure your school location for route planning. Only one school is active at a time.
-    </p>
+<div class="max-w-5xl px-6 py-10 h-full overflow-y-auto scrollbar-thin">
+    <!-- Header -->
+    <div class="mb-10">
+        <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2 mb-2">
+            <i data-lucide="settings" class="w-6 h-6 text-slate-500"></i> Settings
+        </h1>
+        <p class="text-sm text-slate-500">Configure your school location for route planning. Only one school is active at a time.</p>
+    </div>
 
     <!-- Current School Card -->
-    <div class="settings-card">
-        <div class="card-title"><i class="fas fa-school" style="color:#10b981;"></i> Current School</div>
-        <div class="card-description">The school all bus routes will drive to.</div>
+    <div class="bg-white border border-slate-200 rounded-xl p-6 mb-8 shadow-sm">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="school" class="w-5 h-5 text-emerald-500"></i>
+            <h2 class="text-base font-bold text-slate-800">Current School</h2>
+        </div>
+        <p class="text-xs text-slate-500 mb-5">The school all bus routes will drive to.</p>
 
-        <div id="currentSchoolDisplay" class="current-school not-set">
-            <div class="school-icon">🏫</div>
-            <div class="school-details">
-                <div class="school-name">No school set</div>
-                <div class="school-address" style="color:#b45309;">Search below to set a school location.</div>
+        <div id="currentSchoolDisplay" class="flex items-start gap-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <div class="text-2xl shrink-0"><i data-lucide="school" class="w-8 h-8 text-amber-600"></i></div>
+            <div class="flex-1">
+                <div class="font-bold text-amber-900 text-sm">No school set</div>
+                <div class="text-xs text-amber-700 mt-0.5">Search below to set a school location.</div>
             </div>
         </div>
 
-        <div id="schoolPreviewMap" style="display:none;"></div>
+        <div id="schoolPreviewMap" class="w-full h-60 rounded-lg mt-4 border border-slate-200 hidden"></div>
 
-        <button id="clearSchoolBtn" class="clear-btn" style="display:none;" onclick="clearSchool()">
-            <i class="fas fa-times"></i> Clear School Location
+        <button id="clearSchoolBtn" class="mt-4 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 hover:border-rose-300 text-xs font-bold rounded-md transition-colors hidden items-center gap-1.5" onclick="clearSchool()">
+            <i data-lucide="x" class="w-4 h-4"></i> Clear School Location
         </button>
     </div>
 
     <!-- Set School Card -->
-    <div class="settings-card">
-        <div class="card-title"><i class="fas fa-search-location" style="color:#3b82f6;"></i> Set School Location</div>
-        <div class="card-description">Search for your school using the OneMap address search.</div>
+    <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="search" class="w-5 h-5 text-blue-500"></i>
+            <h2 class="text-base font-bold text-slate-800">Set School Location</h2>
+        </div>
+        <p class="text-xs text-slate-500 mb-5">Search for your school using the OneMap address search.</p>
 
-        <div class="search-wrapper">
-            <i class="fas fa-search search-icon"></i>
-            <input type="text" id="schoolSearch" class="search-input" placeholder="Search school name or address..."
-                autocomplete="off">
-            <div id="searchResults" class="autocomplete-list"></div>
+        <div class="relative search-wrapper">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <input type="text" id="schoolSearch" class="w-full h-11 pl-10 pr-4 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all" placeholder="Search school name or address..." autocomplete="off">
+            <div id="searchResults" class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto z-50 hidden divide-y divide-slate-100"></div>
         </div>
     </div>
 </div>
 
 <!-- Success Toast -->
-<div id="successToast" class="success-toast">
-    <i class="fas fa-check-circle"></i> School location updated!
+<div id="successToast" class="fixed top-6 right-6 bg-emerald-500 text-white px-5 py-3 rounded-lg font-semibold text-sm shadow-lg transform -translate-y-4 opacity-0 transition-all duration-300 flex items-center gap-2 z-[9999]">
+    <i data-lucide="check-circle-2" class="w-5 h-5"></i> School location updated!
 </div>
 {% endblock %}
 
@@ -298,19 +96,20 @@
         const mapDiv = document.getElementById('schoolPreviewMap');
         const clearBtn = document.getElementById('clearSchoolBtn');
 
-        display.className = 'current-school';
+        display.className = 'flex items-start gap-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg';
         display.innerHTML = `
-            <div class="school-icon">🏫</div>
-            <div class="school-details">
-                <div class="school-name">${school.name || 'School'}</div>
-                <div class="school-address" style="color:#15803d;">${school.address || 'Address not available'}</div>
-                <div class="school-coords">${school.latitude.toFixed(6)}, ${school.longitude.toFixed(6)}</div>
+            <div class="text-2xl shrink-0"><i data-lucide="school" class="w-8 h-8 text-emerald-600"></i></div>
+            <div class="flex-1">
+                <div class="font-bold text-emerald-900 text-sm">${school.name || 'School'}</div>
+                <div class="text-xs text-emerald-700 mt-0.5">${school.address || 'Address not available'}</div>
+                <div class="text-[10px] text-emerald-600/70 mt-1 font-mono">${school.latitude.toFixed(6)}, ${school.longitude.toFixed(6)}</div>
             </div>
         `;
 
         // Show map and clear button
         mapDiv.style.display = 'block';
-        clearBtn.style.display = 'inline-block';
+        clearBtn.style.display = 'inline-flex';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
 
         // Initialize or update map
         setTimeout(() => {
@@ -328,7 +127,7 @@
             previewMarker = L.marker([school.latitude, school.longitude], {
                 icon: L.divIcon({
                     className: 'school-icon-marker',
-                    html: '<div style="font-size:28px;">🏫</div>',
+                    html: '<div class="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white"><i data-lucide="school" class="w-4 h-4"></i></div>',
                     iconSize: [32, 32],
                     iconAnchor: [16, 16]
                 })
@@ -348,7 +147,7 @@
             const val = input.value.trim();
 
             if (val.length < 2) {
-                results.style.display = 'none';
+                results.classList.add('hidden');
                 return;
             }
 
@@ -363,16 +162,16 @@
 
                     if (data.results && data.results.length > 0) {
                         results.innerHTML = data.results.map(r => `
-                            <div class="autocomplete-item"
+                            <div class="px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
                                  onclick='selectSchool(${JSON.stringify(r).replace(/'/g, "&#39;")})'>
-                                <div class="item-name">${r.BUILDING || r.SEARCHVAL || r.ADDRESS}</div>
-                                <div class="item-address">${r.ADDRESS}</div>
+                                <div class="text-sm font-semibold text-slate-800">${r.BUILDING || r.SEARCHVAL || r.ADDRESS}</div>
+                                <div class="text-xs text-slate-500 font-mono mt-0.5">${r.ADDRESS}</div>
                             </div>
                         `).join('');
-                        results.style.display = 'block';
+                        results.classList.remove('hidden');
                     } else {
-                        results.innerHTML = '<div style="padding:12px; color:#94a3b8; text-align:center; font-size:0.85rem;">No results found</div>';
-                        results.style.display = 'block';
+                        results.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">No results found</div>';
+                        results.classList.remove('hidden');
                     }
                 } catch (e) {
                     console.error(e);
@@ -383,7 +182,7 @@
         // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.search-wrapper')) {
-                results.style.display = 'none';
+                results.classList.add('hidden');
             }
         });
     }
@@ -435,16 +234,17 @@
 
             // Reset UI
             const display = document.getElementById('currentSchoolDisplay');
-            display.className = 'current-school not-set';
+            display.className = 'flex items-start gap-4 p-4 bg-amber-50 border border-amber-200 rounded-lg';
             display.innerHTML = `
-                <div class="school-icon">🏫</div>
-                <div class="school-details">
-                    <div class="school-name">No school set</div>
-                    <div class="school-address" style="color:#b45309;">Search below to set a school location.</div>
+                <div class="text-2xl shrink-0"><i data-lucide="school" class="w-8 h-8 text-amber-600"></i></div>
+                <div class="flex-1">
+                    <div class="font-bold text-amber-900 text-sm">No school set</div>
+                    <div class="text-xs text-amber-700 mt-0.5">Search below to set a school location.</div>
                 </div>
             `;
             document.getElementById('schoolPreviewMap').style.display = 'none';
             document.getElementById('clearSchoolBtn').style.display = 'none';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
 
             if (previewMap) {
                 previewMap.remove();
@@ -459,8 +259,12 @@
     // Show success toast
     function showToast() {
         const toast = document.getElementById('successToast');
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
+        toast.classList.remove('translate-y-[-20px]', 'opacity-0');
+        toast.classList.add('translate-y-0', 'opacity-100');
+        setTimeout(() => {
+            toast.classList.remove('translate-y-0', 'opacity-100');
+            toast.classList.add('translate-y-[-20px]', 'opacity-0');
+        }, 2500);
     }
 </script>
 {% endblock %}

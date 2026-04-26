@@ -4,162 +4,60 @@
 {% block main_class %}export-view{% endblock %}
 
 {% block head %}
-<style>
-    .export-container {
-        padding: 30px;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        background: var(--surface-page);
-    }
-    
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-    }
-    
-    .page-title {
-        font-size: 1.35rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        letter-spacing: -0.02em;
-    }
-    
-    .table-container {
-        flex: 1;
-        background: var(--surface-card);
-        border-radius: var(--radius-lg);
-        box-shadow: var(--shadow-md);
-        border: 1px solid var(--border-default);
-        overflow: auto;
-    }
-    
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.85rem;
-    }
-    
-    th {
-        background: var(--surface-page);
-        padding: 14px 16px;
-        text-align: left;
-        font-weight: 600;
-        color: var(--text-secondary);
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
-    
-    td {
-        padding: 14px 16px;
-        border-bottom: 1px solid var(--border-light);
-        color: var(--text-primary);
-    }
-    
-    tr:hover td {
-        background: var(--surface-page);
-    }
-    
-    .btn-primary {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%);
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: var(--radius-md);
-        font-weight: 600;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: all var(--transition-base);
-        font-family: var(--font-family);
-        font-size: 0.875rem;
-        box-shadow: 0 1px 3px rgba(5, 150, 105, 0.3);
-    }
-    
-    .btn-primary:hover {
-        background: linear-gradient(135deg, #047857 0%, #065f46 100%);
-        transform: translateY(-1px);
-    }
 
-    .badge {
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        background: #e0f2fe;
-        color: #0284c7;
-    }
-
-    .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        color: #94a3b8;
-    }
-    .empty-state i {
-        font-size: 3rem;
-        margin-bottom: 16px;
-        color: #cbd5e1;
-    }
-    .empty-state p {
-        font-size: 1.1rem;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
-<div class="export-container">
-    <div class="page-header">
-        <div class="page-title">
-            <div style="background:#e0e7ff; color:#4f46e5; width:40px; height:40px; border-radius:8px; display:flex; align-items:center; justify-content:center;">
-                <i class="fas fa-table"></i>
+<div class="p-8 w-full h-full flex flex-col">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm border border-indigo-100">
+                <i data-lucide="table" class="w-5 h-5"></i>
             </div>
-            Results Table
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">Results Table</h1>
+                <p class="text-sm text-slate-500 mt-1">Review the optimized routing data before exporting.</p>
+            </div>
         </div>
-        <button class="btn-primary" onclick="downloadCSV()">
-            <i class="fas fa-download"></i> Download CSV
+        <button class="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-md flex items-center gap-2 transition-all shadow-sm" onclick="downloadCSV()">
+            <i data-lucide="download" class="w-4 h-4"></i> Download CSV
         </button>
     </div>
 
-    <div class="table-container">
-        <table id="resultsTable">
-            <thead>
-                <tr>
-                    <th>Bus</th>
-                    <th>Plate</th>
-                    <th>Pax</th>
-                    <th>Est. Time</th>
-                    <th>Real Time</th>
-                    <th>Student ID</th>
-                    <th>Student Name</th>
-                    <th>Pickup Time</th>
-                    <th>Address</th>
-                    <th>Postal</th>
-                    <th>Lat / Long</th>
-                    <th>Remark</th>
-                    <th>Spec. Needs</th>
-                </tr>
-            </thead>
-            <tbody id="tableBody">
-                <tr><td colspan="12" class="empty-state">
-                    <i class="fas fa-clipboard-list"></i>
-                    <p>Loading routing data...</p>
-                </td></tr>
-            </tbody>
-        </table>
+    <!-- Data Table -->
+    <div class="flex-1 overflow-hidden bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col">
+        <div class="overflow-x-auto overflow-y-auto flex-1 scrollbar-thin">
+            <table class="w-full text-left border-collapse whitespace-nowrap">
+                <thead class="sticky top-0 bg-slate-50 z-10 shadow-[0_1px_0_#e2e8f0]">
+                    <tr>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bus</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plate</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Pax</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Est. Time</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Real Time</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Student ID</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Student Name</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Pickup Time</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Address</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Postal</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lat / Long</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remark</th>
+                        <th class="h-10 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Spec. Needs</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="divide-y divide-slate-100">
+                    <tr>
+                        <td colspan="13" class="text-center py-16">
+                            <div class="flex flex-col items-center justify-center text-slate-400">
+                                <i data-lucide="clipboard-list" class="w-12 h-12 mb-3 text-slate-300"></i>
+                                <p class="text-sm">Loading routing data...</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -172,15 +70,16 @@
         
         if (!storedData) {
             tbody.innerHTML = `
-                <tr><td colspan="12">
-                    <div class="empty-state">
-                        <i class="fas fa-route"></i>
-                        <p>No routing results found.</p>
-                        <p style="font-size:0.9rem; margin-top:8px;">Please go back to Route Planning and generate routes first.</p>
-                        <a href="/" style="margin-top:16px; color:#3b82f6; text-decoration:none; font-weight:600;"><i class="fas fa-arrow-left"></i> Back to Map</a>
+                <tr><td colspan="13" class="text-center py-16">
+                    <div class="flex flex-col items-center justify-center text-slate-400">
+                        <i data-lucide="route" class="w-12 h-12 mb-3 text-slate-300"></i>
+                        <p class="text-base font-semibold text-slate-600">No routing results found.</p>
+                        <p class="text-sm mt-1">Please go back to Route Planning and generate routes first.</p>
+                        <a href="/" class="mt-4 inline-flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"><i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Map</a>
                     </div>
                 </td></tr>
             `;
+            setTimeout(() => { if(typeof lucide !== 'undefined') lucide.createIcons(); }, 10);
             return;
         }
 
@@ -202,23 +101,24 @@
                 
                 students.forEach((student, j) => {
                     const row = document.createElement('tr');
+                    row.className = "hover:bg-slate-50 transition-colors";
                     
-                    const specBadge = student.special_needs ? '<span class="badge" style="background:#fce7f3; color:#db2777;">Yes</span>' : 'No';
+                    const specBadge = student.special_needs ? '<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">YES</span>' : '<span class="text-slate-400 text-xs font-medium">-</span>';
                     
                     row.innerHTML = `
-                        <td><strong>${busStr}</strong></td>
-                        <td><span class="badge">${vehiclePlate}</span></td>
-                        <td>${students.length}</td>
-                        <td style="color:#64748b; text-decoration:line-through; font-size:0.85rem;">${Math.round(haversineMin)} min</td>
-                        <td style="color:#f59e0b; font-weight:700;">${Math.round(durMin)} min</td>
-                        <td style="font-weight:600;">${student.student_id || 'S' + student.id}</td>
-                        <td style="font-weight:500;">${student.name || '-'}</td>
-                        <td style="color:#3b82f6; font-weight:600;">${student.pickup_time || '-'}</td>
-                        <td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${student.address}">${student.address}</td>
-                        <td>${student.postal || '-'}</td>
-                        <td style="font-size:0.8rem; color:#94a3b8;">${student.latitude.toFixed(4)}, ${student.longitude.toFixed(4)}</td>
-                        <td>${student.address_note || '-'}</td>
-                        <td>${specBadge}</td>
+                        <td class="px-4 py-3 text-sm font-bold text-slate-800">${busStr}</td>
+                        <td class="px-4 py-3"><span class="inline-block bg-sky-50 text-sky-700 px-2 py-0.5 rounded-md text-xs font-bold border border-sky-100 font-mono">${vehiclePlate}</span></td>
+                        <td class="px-4 py-3 text-sm font-medium text-slate-600 text-center">${students.length}</td>
+                        <td class="px-4 py-3 text-xs text-slate-400 line-through text-right font-mono">${Math.round(haversineMin)} min</td>
+                        <td class="px-4 py-3 text-sm font-bold text-amber-600 text-right font-mono">${Math.round(durMin)} min</td>
+                        <td class="px-4 py-3 text-xs font-bold text-slate-500 font-mono">${student.student_id || 'S' + student.id}</td>
+                        <td class="px-4 py-3 text-sm font-semibold text-slate-800">${student.name || '-'}</td>
+                        <td class="px-4 py-3 text-sm font-bold text-blue-600 text-right font-mono">${student.pickup_time || '-'}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate" title="${student.address}">${student.address}</td>
+                        <td class="px-4 py-3 text-xs font-mono text-slate-500">${student.postal || '-'}</td>
+                        <td class="px-4 py-3 text-[10px] font-mono text-slate-400">${student.latitude.toFixed(4)}, ${student.longitude.toFixed(4)}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500 max-w-[150px] truncate" title="${student.address_note || '-'}">${student.address_note || '-'}</td>
+                        <td class="px-4 py-3 text-center">${specBadge}</td>
                     `;
                     tbody.appendChild(row);
 
@@ -234,7 +134,7 @@
 
         } catch(e) {
             console.error("Failed to parse routes", e);
-            tbody.innerHTML = '<tr><td colspan="12" class="empty-state">Error loading data</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13" class="text-center py-12 text-sm text-rose-500 font-medium">Error parsing route data.</td></tr>';
         }
     });
 

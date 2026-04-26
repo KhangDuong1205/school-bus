@@ -1,350 +1,4 @@
-{% extends "base.html" %}
 
-{% block title %}School Bus Route Planner - Map{% endblock %}
-{% block main_class %}map-view{% endblock %}
-
-{% block head %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-  
-  .control-panel * { font-family: 'Inter Tight', system-ui, sans-serif; }
-  .mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; }
-  .scrollbar-thin::-webkit-scrollbar { width: 10px; height: 10px; }
-  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: padding-box; border: 2px solid transparent; }
-  
-  @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .slide-down { animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  .fade-in { animation: fadeIn 0.12s ease-out; }
-  @keyframes pulseGlow { 0%, 100% { box-shadow: inset 0 0 0 2px rgb(59 130 246 / 0.5); } 50% { box-shadow: inset 0 0 0 2px rgb(59 130 246 / 0.9); } }
-  .drop-zone-active { animation: pulseGlow 1.4s ease-in-out infinite; background: linear-gradient(180deg, rgba(59,130,246,0.04), rgba(59,130,246,0.10)); }
-  .row-shift { transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1); }
-  @keyframes pendingPulse { 0%, 100% { background: rgba(59, 130, 246, 0.06); } 50% { background: rgba(59, 130, 246, 0.12); } }
-  .pending-row { animation: pendingPulse 2.5s ease-in-out infinite; border-left: 3px solid #3b82f6 !important; }
-  .drop-indicator-line { background: linear-gradient(90deg, transparent, #3b82f6 20%, #3b82f6 80%, transparent); }
-  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-  .pending-bar-shimmer { background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #1e40af 100%); background-size: 200% 100%; animation: shimmer 3s linear infinite; }
-  .drag-handle { touch-action: none; cursor: grab; }
-  .drag-handle:active { cursor: grabbing; }
-
-  .map-container { display: flex !important; flex: 1 !important; width: 100% !important; height: 100% !important; min-height: 0; position: relative; overflow: hidden; background: #ebeae9; }
-  .control-panel { 
-      width: 55vw; min-width: 380px; max-width: 80vw; 
-      background: #f8fafc;
-      display: flex; flex-direction: column; 
-      border-right: 1px solid #e2e8f0; z-index: 1000; 
-      transition: width 0.1s ease, flex-basis 0.1s ease; 
-      position: relative; flex-shrink: 0; flex-basis: 55vw; 
-      height: 100%;
-  }
-  .control-panel.collapsed { width: 0 !important; min-width: 0 !important; overflow: hidden; border: none; flex-basis: 0 !important; }
-  #map { flex: 1 !important; height: 100% !important; width: 100% !important; z-index: 1; background: #ebeae9; position: relative; }
-
-  .horizontal-resize-handle { position: absolute; right: -5px; top: 0; width: 10px; height: 100%; cursor: ew-resize; background: transparent; z-index: 2000; display: flex; align-items: center; justify-content: center; }
-  .horizontal-resize-handle::after { content: ''; width: 3px; height: 36px; background: transparent; border-radius: 9999px; transition: background 0.2s; }
-  .horizontal-resize-handle:hover::after, .horizontal-resize-handle.active-resize::after { background: #2563eb; }
-  
-  .panel-toggle { margin-top: 20px; background: #fff; border: 1px solid #e2e8f0; border-left: none; border-radius: 0 8px 8px 0; padding: 10px 8px; cursor: pointer; z-index: 1010; box-shadow: 0 1px 3px rgba(0,0,0,0.1); color: #94a3b8; display: flex; align-items: center; justify-content: center; height: 40px; position: absolute; left: 55vw; transition: left 0.1s ease, background 0.2s; }
-  .panel-toggle:hover { background: #f8fafc; color: #475569; }
-  .control-panel.collapsed ~ .panel-toggle { left: 0 !important; }
-  .control-panel.collapsed ~ .panel-toggle i { transform: rotate(180deg); }
-
-  .custom-student-icon { display: flex; align-items: center; justify-content: center; width: 28px !important; height: 28px !important; background-color: #2563eb; color: white; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); font-size: 13px; transition: all 0.3s; }
-  .custom-student-icon.violation { background-color: #dc2626 !important; animation: pulse-red 1.5s infinite; border-color: #fca5a5; }
-  @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); } 70% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); } }
-  
-  .chat-fab { position: fixed; bottom: 24px; right: 24px; width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(56, 189, 248, 0.08); cursor: pointer; z-index: 4000; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; transition: transform 0.2s, box-shadow 0.2s; }
-  .chat-fab.hidden { display: none; }
-  .chat-panel { position: fixed; bottom: 24px; right: 24px; width: 400px; height: 600px; max-height: calc(100vh - 48px); background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25); display: none; flex-direction: column; z-index: 4000; overflow: hidden; font-family: 'Inter Tight', sans-serif; }
-  .chat-panel.open { display: flex; }
-  .chat-header { background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); color: #e2e8f0; padding: 12px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(56, 189, 248, 0.12); }
-  .chat-header-title { font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .chat-header-title .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.5); }
-  .chat-model-toggle { margin-left: auto; display: inline-flex; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px; padding: 2px; font-size: 0.7rem; font-weight: 600; }
-  .chat-model-toggle button { padding: 4px 10px; background: transparent; border: none; color: #64748b; cursor: pointer; border-radius: 4px; transition: all 0.15s; }
-  .chat-model-toggle button.active { background: #38bdf8; color: #0f172a; }
-  .chat-header-actions { display: flex; gap: 4px; }
-  .chat-header-actions button { background: transparent; border: none; color: #64748b; width: 26px; height: 26px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; transition: all 0.15s; }
-  .chat-header-actions button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); color: #e2e8f0; }
-  .chat-body { flex: 1; overflow: auto; padding: 14px; background: #f8fafc; display: flex; flex-direction: column; gap: 10px; }
-  .chat-bubble { max-width: 85%; padding: 10px 12px; border-radius: 8px; font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-  .chat-bubble.user { align-self: flex-end; background: #2563eb; color: #fff; border-bottom-right-radius: 2px; }
-  .chat-bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid #e2e8f0; color: #0f172a; border-bottom-left-radius: 2px; }
-  .chat-toolcalls { margin-top: 8px; border-top: 1px solid #f1f5f9; padding-top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #475569; }
-  .chat-toolcall { display: flex; align-items: flex-start; gap: 6px; padding: 3px 0; }
-  .chat-toolcall.ok .tc-status { color: #059669; }
-  .chat-toolcall.fail .tc-status { color: #dc2626; }
-  .chat-warnings { margin-top: 8px; background: #fffbeb; border-left: 3px solid #d97706; padding: 8px 10px; font-size: 0.74rem; color: #92400e; }
-  .chat-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .chat-suggestion { font-size: 0.72rem; background: #fff; border: 1px solid #e2e8f0; color: #475569; padding: 5px 10px; border-radius: 9999px; cursor: pointer; transition: all 0.15s; }
-  .chat-suggestion:hover { border-color: #2563eb; color: #2563eb; }
-  .chat-footer { border-top: 1px solid #e2e8f0; background: #fff; padding: 10px 12px; }
-  .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
-  .chat-input { flex: 1; resize: none; min-height: 36px; max-height: 120px; padding: 8px 10px; font-size: 0.82rem; border: 1px solid #e2e8f0; border-radius: 6px; outline: none; transition: border-color 0.15s; }
-  .chat-input:focus { border-color: #2563eb; }
-  .chat-send-btn { width: 36px; height: 36px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-  .chat-disabled-overlay { position: absolute; inset: 0; background: rgba(248, 250, 252, 0.92); display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.85rem; color: #475569; padding: 20px; z-index: 10; }
-  
-  .bus-lane.collapsed .bus-rows { display: none; }
-  .bus-lane.collapsed .chevron-icon { transform: rotate(-90deg); }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="map-container">
-    <!-- CONTROL PANEL -->
-    <div class="control-panel text-slate-900 bg-slate-50" id="controlPanel">
-        
-        <!-- Pending changes banner -->
-        <div id="floatingActionBar" class="sticky top-0 z-40 hidden slide-down pending-bar-shimmer text-white">
-            <div class="px-6 h-11 flex items-center gap-3">
-                <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-amber-300 animate-pulse"></div>
-                    <span class="text-sm font-semibold" id="unassignedCountText">Unsaved changes</span>
-                    <span class="text-xs text-blue-100">— not saved yet</span>
-                </div>
-                <div class="ml-auto flex items-center gap-1.5">
-                    <button id="undoBtn" onclick="undoLastAction()" class="h-7 px-3 text-xs font-medium text-white/90 hover:bg-white/15 rounded-md transition-colors flex items-center gap-1.5">
-                        <i data-lucide="x" class="w-3 h-3"></i> Discard
-                    </button>
-                    <button id="recalcRoutesBtn" onclick="applyRouteChanges()" class="h-7 px-3.5 text-xs font-bold text-blue-700 bg-white hover:bg-blue-50 rounded-md transition-colors flex items-center gap-1.5 shadow-sm">
-                        <i data-lucide="check-circle-2" class="w-3 h-3"></i> Apply & Recalculate
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Header / Tab Navigation -->
-        <div class="bg-white border-b border-slate-200 sticky z-30 top-0" id="mainTabHeader">
-            <div class="px-6 h-12 flex items-center gap-3">
-                <div class="flex items-center gap-2 text-xs">
-                    <span class="text-slate-400">RouteOptimise</span>
-                    <i data-lucide="chevron-right" class="w-3 h-3 text-slate-300"></i>
-                    <span class="font-semibold text-slate-800" id="headerTitle">Setup Configuration</span>
-                </div>
-                <div class="ml-auto flex items-center gap-1.5">
-                    <button id="tab-btn-setup" onclick="switchTab('setup')" class="h-7 px-3 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5 bg-blue-50 text-blue-700">
-                        <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> Setup
-                    </button>
-                    <button id="tab-btn-results" onclick="switchTab('results')" class="h-7 px-3 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 text-slate-600 hover:bg-slate-100">
-                        <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i> Results
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Horizontal resize handle -->
-        <div class="horizontal-resize-handle" id="horizontalResizeHandle"></div>
-
-        <!-- TAB CONTENT: SETUP -->
-        <div id="tab-setup" class="tab-content flex-1 overflow-y-auto flex flex-col scrollbar-thin">
-            
-            <div class="p-6 border-b border-slate-200">
-                <div class="flex items-center gap-2 mb-4">
-                    <i data-lucide="settings" class="w-4 h-4 text-slate-500"></i>
-                    <h2 class="text-sm font-bold text-slate-800">Route Configuration</h2>
-                </div>
-
-                <div id="setupContainer" class="space-y-4">
-                    <div id="fleetInfoBanner" class="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center gap-3">
-                        <i data-lucide="bus" class="w-4 h-4 text-blue-600"></i>
-                        <span id="fleetInfoText" class="text-xs font-medium text-blue-900">Loading fleet info...</span>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">School By</label>
-                            <input type="time" id="schoolTime" value="07:30" onchange="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Max Ride (min)</label>
-                            <input type="number" id="maxRideTime" value="60" oninput="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Service (sec/pax)</label>
-                            <input type="number" id="serviceTime" value="60" oninput="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Speed (km/h)</label>
-                            <input type="number" id="avgSpeed" value="50" oninput="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
-                        </div>
-                    </div>
-
-                    <div id="confirmSettingsWrapper" style="display: none;">
-                        <button id="confirmSettingsBtn" onclick="confirmSettings()" class="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-colors">
-                            <i data-lucide="check-check" class="w-4 h-4"></i> Confirm New Settings
-                        </button>
-                    </div>
-
-                    <div class="flex gap-2 pt-2">
-                        <button id="optimizeMainBtn" onclick="optimiseRoutes()" class="flex-1 h-9 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all shadow-sm">
-                            <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Optimize Routes
-                        </button>
-                        <button id="saveRunBtn" onclick="saveCurrentRun()" disabled class="w-10 h-9 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-md flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                            <i data-lucide="save" class="w-4 h-4"></i>
-                        </button>
-                    </div>
-
-                    <div id="optimisationResult" class="text-center text-xs font-medium text-slate-500 py-1">
-                        Ready to optimize.
-                    </div>
-                </div>
-            </div>
-
-            <div class="p-6 border-b border-slate-200">
-                <button onclick="analyzeClusters()" class="w-full h-8 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-md flex items-center justify-center gap-2 text-xs font-semibold transition-colors mb-3">
-                    <i data-lucide="network" class="w-3.5 h-3.5 text-purple-500"></i> Analyze Clusters
-                </button>
-                
-                <div id="clusterInfoDisplay" class="hidden bg-purple-50/50 border border-purple-100 rounded-lg p-3 text-xs mb-3">
-                    <div class="font-semibold text-purple-900 mb-1 flex items-center gap-1.5"><i data-lucide="pie-chart" class="w-3 h-3"></i> Cluster Stats</div>
-                    <div id="clusterInfoContent" class="text-purple-800"></div>
-                </div>
-
-                <div id="clusterListSection" class="hidden flex-col h-[200px]">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Clusters</span>
-                        <button onclick="clearClusters()" class="text-[10px] text-slate-400 hover:text-slate-700">Clear</button>
-                    </div>
-                    <div id="clusterListContent" class="flex-1 overflow-y-auto scrollbar-thin bg-white border border-slate-200 rounded-lg p-2 text-xs space-y-2">
-                    </div>
-                </div>
-            </div>
-
-            <div class="p-6 flex-1 flex flex-col min-h-[200px]" id="savedRunsSection">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-1.5">
-                        <i data-lucide="history" class="w-3.5 h-3.5 text-emerald-500"></i>
-                        <span class="text-xs font-bold text-slate-700">Saved Runs</span>
-                    </div>
-                    <button onclick="loadSavedRuns()" class="text-slate-400 hover:text-slate-700"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>
-                </div>
-                <div id="savedRunsContent" class="flex-1 overflow-y-auto scrollbar-thin space-y-2">
-                    <div class="text-center text-xs text-slate-400 py-4">Loading...</div>
-                </div>
-            </div>
-
-            <div class="p-3 text-center border-t border-slate-200 bg-slate-50 mt-auto shrink-0">
-                <a href="/students" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
-                    <i data-lucide="users" class="w-3.5 h-3.5"></i> Manage Students <i data-lucide="arrow-right" class="w-3 h-3"></i>
-                </a>
-                <div class="text-[10px] text-slate-500 mt-1"><span id="totalStudents" class="mono font-semibold">0</span> students loaded</div>
-            </div>
-        </div>
-
-        <!-- TAB CONTENT: RESULTS -->
-        <div id="tab-results" class="tab-content hidden flex-1 flex-col overflow-hidden">
-            
-            <div class="px-6 h-11 flex items-center gap-2 border-b border-slate-200 shrink-0 bg-white">
-                <button onclick="toggleAllRoutesVisibility()" id="toggleAllRoutesBtn" class="h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200">
-                    <i data-lucide="eye" class="w-3.5 h-3.5 text-blue-500"></i> Routes
-                </button>
-                <button onclick="toggleAllStudentsVisibility()" id="toggleAllStudentsBtn" class="h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200">
-                    <i data-lucide="eye" class="w-3.5 h-3.5 text-purple-500"></i> Students
-                </button>
-                <div class="h-5 w-px bg-slate-200 mx-1"></div>
-                <button onclick="fetchAllRealRoutes()" id="fetchAllRoutesBtn" class="h-7 px-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors flex items-center gap-1.5">
-                    <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i> Fetch all real
-                </button>
-                <button onclick="window.location.href='/export-data'" id="exportCsvBtn" disabled class="ml-auto h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 disabled:opacity-50">
-                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
-                </button>
-                <button onclick="clearRouteLines()" class="h-7 px-2.5 text-xs font-medium text-slate-500 hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors flex items-center gap-1.5">
-                    <i data-lucide="x" class="w-3.5 h-3.5"></i> Clear
-                </button>
-            </div>
-
-            <div class="sticky top-0 z-20 bg-slate-100/90 backdrop-blur-sm border-b border-slate-200 shrink-0">
-                <div class="grid items-center h-9 px-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider" style="grid-template-columns: 32px 1fr 130px 70px 100px 40px;">
-                    <div></div>
-                    <div>Student & Address</div>
-                    <div>Phone</div>
-                    <div class="text-center">Grade</div>
-                    <div class="text-right">Pickup</div>
-                    <div></div>
-                </div>
-            </div>
-
-            <div id="routeDetailsContent" class="flex-1 overflow-y-auto scrollbar-thin pb-20 bg-slate-50">
-                <div class="text-center text-slate-400 py-10 text-sm">No active routes.</div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- TOGGLE BUTTON -->
-    <button class="panel-toggle" onclick="togglePanel()" title="Toggle Panel">
-        <i data-lucide="chevron-left" class="w-4 h-4"></i>
-    </button>
-
-    <!-- MAP -->
-    <div id="map"></div>
-
-    <!-- AI CHAT FAB (closed state) -->
-    <button class="chat-fab" id="chatFab" onclick="openChat()" title="AI Route Editor">
-        <i data-lucide="bot" class="w-6 h-6"></i>
-    </button>
-
-    <!-- AI CHAT PANEL (open state) -->
-    <div class="chat-panel" id="chatPanel">
-        <div class="chat-header">
-            <div class="chat-header-title">
-                <span class="status-dot"></span>
-                <span>Route Editor</span>
-            </div>
-            <div class="chat-model-toggle" id="chatModelToggle">
-                <button data-model="gemini-2.5-flash" class="active" onclick="setChatModel('gemini-2.5-flash')" title="Fast, cheap">FLASH</button>
-                <button data-model="gemini-2.5-pro" onclick="setChatModel('gemini-2.5-pro')" title="Smartest, slower">PRO</button>
-            </div>
-            <div class="chat-header-actions">
-                <button id="chatUndoBtn" onclick="undoChatAction()" disabled title="Undo last change">
-                    <i data-lucide="undo" class="w-4 h-4"></i>
-                </button>
-                <button onclick="clearChatHistory()" title="Clear conversation">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                </button>
-                <button onclick="closeChat()" title="Minimize">
-                    <i data-lucide="minus" class="w-4 h-4"></i>
-                </button>
-            </div>
-        </div>
-
-        <div class="chat-body" id="chatBody">
-            <!-- Welcome / empty state injected by JS -->
-        </div>
-
-        <div class="chat-footer">
-            <div class="chat-input-row">
-                <textarea class="chat-input" id="chatInput" rows="1"
-                          placeholder="Describe a route change…"
-                          onkeydown="handleChatKeydown(event)"
-                          oninput="autoResizeChatInput(this)"></textarea>
-                <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">
-                    <i data-lucide="send" class="w-4 h-4"></i>
-                </button>
-            </div>
-            <div class="chat-hint">enter = send · shift+enter = newline · refs by id or name</div>
-        </div>
-
-        <!-- Disabled overlay shown when no routes optimized yet -->
-        <div class="chat-disabled-overlay" id="chatDisabledOverlay" style="display:none;">
-            Run an optimisation first.<br>The editor needs an active route set to modify.
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-<script>
     // --- Settings Confirmation Logic ---
     let settingsConfirmed = true;
 
@@ -635,9 +289,7 @@
     // Simplified init
     document.addEventListener('DOMContentLoaded', () => {
         if(typeof lucide !== 'undefined') lucide.createIcons();
-        initMap(); setTimeout(() => { if(typeof map !== "undefined" && map) map.invalidateSize(); 
-            console.log("Map invalidated, current center:", map.getCenter());
-        }, 500);
+        initMap();
         loadStudents();
         loadSchool();
         loadFleetInfo();
@@ -2221,15 +1873,24 @@
         evaluateCapacityLimits();
     }
 
-    function unassignStudent(btnElement, event) {
-        if(event) event.stopPropagation();
+    function unassignStudent(btnElement) {
         if (isUndoing) return;
 
         const item = btnElement.closest('.student-drag-item');
         const fromList = item.parentElement;
+        const sibling = item.nextElementSibling; // Store to insert back precisely
         const unassignedList = document.getElementById('unassignedList');
 
-        // Remove empty text from unassigned if needed
+        // Add to undo stack
+        undoStack.push({
+            type: 'unassign',
+            item: item,
+            from: fromList,
+            sibling: sibling
+        });
+        document.getElementById('undoBtn').style.display = 'inline-block';
+
+        // Remove empty text if needed
         const emptyText = document.getElementById('unassignedEmptyText');
         if (emptyText) emptyText.style.display = 'none';
 
@@ -2237,9 +1898,9 @@
         unassignedList.appendChild(item);
 
         // Check if from list became empty
-        const emptyTextFrom = fromList.querySelector('.h-12.mx-6.my-2');
+        const emptyTextFrom = fromList.querySelector('div[style*="text-align:center"]');
         if (emptyTextFrom && fromList.querySelectorAll('.student-drag-item').length === 0) {
-            emptyTextFrom.style.display = 'flex';
+            emptyTextFrom.style.display = 'block';
         }
 
         // Trigger action bar
@@ -2251,17 +1912,30 @@
     function handleDragEnd(evt) {
         if (isUndoing) return;
 
-        // Trigger action bar
+        // Add to undo stack
+        if (evt.from !== evt.to || evt.oldIndex !== evt.newIndex) {
+            undoStack.push({
+                type: 'drag',
+                item: evt.item,
+                from: evt.from,
+                to: evt.to,
+                oldIndex: evt.oldIndex,
+                newIndex: evt.newIndex,
+                sibling: evt.item.nextElementSibling // Note: nextSibling after move might not be original, but Sortable handles it if we just use indices, or we store the original sibling during onStart. We'll use insertBefore with the specific lists.
+            });
+            document.getElementById('undoBtn').style.display = 'inline-block';
+        }
+
         document.getElementById('floatingActionBar').style.display = 'flex';
 
-        const emptyText = evt.to.querySelector('.h-12.mx-6.my-2');
+        const emptyText = evt.to.querySelector('div[style*="text-align:center"]');
         if (emptyText && evt.to.querySelectorAll('.student-drag-item').length > 0) {
             emptyText.style.display = 'none';
         }
 
-        const emptyTextFrom = evt.from.querySelector('.h-12.mx-6.my-2');
+        const emptyTextFrom = evt.from.querySelector('div[style*="text-align:center"]');
         if (emptyTextFrom && evt.from.querySelectorAll('.student-drag-item').length === 0) {
-            emptyTextFrom.style.display = 'flex';
+            emptyTextFrom.style.display = 'block';
         }
 
         updateUnassignedCount();
@@ -2383,35 +2057,32 @@
     // --- RECALCULATE LOGIC ---
     async function applyRouteChanges() {
         const btn = document.getElementById('recalcRoutesBtn');
-        const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Recalculating...';
-        if(typeof lucide !== 'undefined') lucide.createIcons();
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recalculating...';
         btn.disabled = true;
 
         // Reconstruct routes object from DOM
         const newRoutes = [];
         const lists = document.querySelectorAll('.sortable-bus-list');
-
+        
         lists.forEach((list, i) => {
             const busIndex = list.dataset.busIndex;
             if (busIndex === '-1') return; // Skip unassigned bucket
-
+            
             const originalRoute = optimizedRoutesData.routes[busIndex];
             if (!originalRoute) return;
-
+            
             const routeCopy = { ...originalRoute, students: [] };
-
+            
             const items = list.querySelectorAll('.student-drag-item');
             items.forEach(item => {
-                const stData = JSON.parse(item.dataset.studentJson);
-                // Handle both single student objects and arrays of students (grouped stops)
-                if (Array.isArray(stData)) {
-                    routeCopy.students.push(...stData);
+                const groupData = JSON.parse(item.dataset.studentJson);
+                if (Array.isArray(groupData)) {
+                    routeCopy.students.push(...groupData);
                 } else {
-                    routeCopy.students.push(stData);
+                    routeCopy.students.push(groupData);
                 }
             });
-
+            
             routeCopy.student_count = routeCopy.students.length;
             newRoutes.push(routeCopy);
         });
@@ -2429,22 +2100,20 @@
 
             const result = await res.json();
             if (result.error) throw new Error(result.error);
-
+            
             // Update global data and re-render
             optimizedRoutesData.routes = result.routes;
             displayRoutes(optimizedRoutesData);
-
-            // Hide action bar
-            document.getElementById('floatingActionBar').style.display = 'none';
-            undoStack = [];
-            document.getElementById('undoBtn').style.display = 'none';
-
+            
+            alert('Routes updated successfully!');
+            
         } catch (e) {
             console.error(e);
-            alert('Error recalculating routes: ' + e.message);
-            btn.innerHTML = originalHtml;
+            alert('Failed to recalculate: ' + e.message);
+        } finally {
+            btn.innerHTML = '<i data-lucide="check-circle-2" class="w-3 h-3"></i> Apply & Recalculate'; lucide.createIcons();
             btn.disabled = false;
-            if(typeof lucide !== 'undefined') lucide.createIcons();
+            document.getElementById('floatingActionBar').style.display = 'none'; // Hide floating bar
         }
     }
 
@@ -3061,5 +2730,3 @@
         updateChatAvailability();
     };
 
-</script>
-{% endblock %}

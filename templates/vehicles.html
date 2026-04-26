@@ -4,316 +4,88 @@
 {% block active_page %}vehicles{% endblock %}
 
 {% block head %}
-<style>
-    /* CONTENT HEADER */
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 28px;
-        padding: 28px 40px 0;
-    }
 
-    .page-title {
-        font-size: 1.35rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        letter-spacing: -0.02em;
-    }
-
-    .page-desc {
-        color: var(--text-tertiary);
-        margin-top: 5px;
-        font-size: 0.85rem;
-    }
-
-    /* CONTENT BODY */
-    .content-body {
-        padding: 20px 40px;
-        overflow-y: auto;
-    }
-
-    /* TABLE STYLES */
-    .data-table {
-        width: 100%;
-        background: var(--surface-card);
-        border-radius: var(--radius-lg);
-        overflow: hidden;
-        box-shadow: var(--shadow-sm);
-        border: 1px solid var(--border-default);
-    }
-
-    .data-table th {
-        background: var(--surface-page);
-        padding: 16px 24px;
-        text-align: left;
-        font-size: 0.7rem;
-        font-weight: 600;
-        color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        border-bottom: 1px solid var(--border-default);
-    }
-
-    .data-table td {
-        padding: 16px 24px;
-        border-bottom: 1px solid var(--border-light);
-        color: var(--text-primary);
-        font-size: 0.875rem;
-    }
-
-    .data-table tr:last-child td {
-        border-bottom: none;
-    }
-
-    .data-table tr:hover {
-        background: var(--surface-page);
-    }
-
-    /* COMPONENTS */
-    .status-badge {
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .status-active {
-        background: #dcfce7;
-        color: #166534;
-    }
-
-    .status-maintenance {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-
-    .btn-primary {
-        background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: var(--radius-md);
-        font-weight: 600;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        transition: all var(--transition-base);
-        font-family: var(--font-family);
-        font-size: 0.875rem;
-        box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
-    }
-
-    .btn-primary:hover {
-        background: linear-gradient(135deg, var(--color-primary-hover) 0%, #1e40af 100%);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
-        transform: translateY(-1px);
-    }
-
-    .actions {
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
-    }
-
-    .btn-icon {
-        width: 32px;
-        height: 32px;
-        border: 1px solid var(--border-default);
-        background: var(--surface-card);
-        border-radius: var(--radius-sm);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--text-secondary);
-        transition: all var(--transition-base);
-    }
-
-    .btn-icon:hover {
-        background: var(--surface-page);
-        color: var(--text-primary);
-    }
-
-    .btn-icon.delete:hover {
-        background: #fef2f2;
-        color: #ef4444;
-        border-color: #fca5a5;
-    }
-
-    /* MODAL */
-    .modal-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.6);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 3000;
-        backdrop-filter: blur(2px);
-    }
-
-    .modal-overlay.show {
-        display: flex;
-    }
-
-    .modal-box {
-        background: var(--surface-card);
-        border-radius: var(--radius-xl);
-        width: 100%;
-        max-width: 450px;
-        box-shadow: var(--shadow-xl);
-    }
-
-    .modal-header {
-        padding: 20px 24px;
-        border-bottom: 1px solid var(--border-default);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .modal-title {
-        font-size: 1.05rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        letter-spacing: -0.01em;
-    }
-
-    .modal-body {
-        padding: 24px;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .form-group label {
-        display: block;
-        margin-bottom: 8px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: #475569;
-    }
-
-    .form-control {
-        width: 100%;
-        padding: 10px 12px;
-        border: 1.5px solid var(--border-default);
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-size: 0.9rem;
-        font-family: var(--font-family);
-        transition: border-color var(--transition-base), box-shadow var(--transition-base);
-    }
-
-    .form-control:focus {
-        outline: none;
-        border-color: var(--color-primary);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-    }
-
-    .modal-footer {
-        padding: 16px 24px;
-        background: var(--surface-page);
-        border-top: 1px solid var(--border-default);
-        border-radius: 0 0 var(--radius-xl) var(--radius-xl);
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-    }
-
-    .btn-secondary {
-        background: white;
-        border: 1px solid #cbd5e1;
-        color: #475569;
-        padding: 9px 16px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: 500;
-    }
-
-    .btn-secondary:hover {
-        background: #f1f5f9;
-    }
-</style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <h1 class="page-title">Fleet / Vehicles</h1>
-        <p class="page-desc">Manage individual vehicles, assign drivers, and track active status.</p>
+<div class="p-8 w-full h-full flex flex-col">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6 shrink-0">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <i data-lucide="bus" class="w-6 h-6 text-blue-500"></i> Fleet / Vehicles
+            </h1>
+            <p class="text-sm text-slate-500 mt-1">Manage individual vehicles, assign drivers, and track active status.</p>
+        </div>
+        <button class="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md flex items-center gap-2 transition-all shadow-sm" onclick="openModal()">
+            <i data-lucide="plus" class="w-4 h-4"></i> Add Vehicle
+        </button>
     </div>
-    <button class="btn-primary" onclick="openModal()">
-        <i class="fas fa-plus"></i> Add Vehicle
-    </button>
-</div>
 
-<div class="content-body">
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Plate Number</th>
-                <th>Nickname</th>
-                <th>Vehicle Type</th>
-                <th>Driver</th>
-                <th>Status</th>
-                <th style="text-align: right;">Actions</th>
-            </tr>
-        </thead>
-        <tbody id="vehiclesBody">
-            <tr>
-                <td colspan="6" style="text-align:center; padding: 40px; color: #94a3b8;">Loading...</td>
-            </tr>
-        </tbody>
-    </table>
+    <!-- Vehicles Table -->
+    <div class="flex-1 overflow-hidden bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col">
+        <div class="overflow-x-auto overflow-y-auto flex-1 scrollbar-thin">
+            <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 bg-slate-50 z-10 shadow-[0_1px_0_#e2e8f0]">
+                    <tr>
+                        <th class="h-10 px-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plate Number</th>
+                        <th class="h-10 px-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nickname</th>
+                        <th class="h-10 px-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vehicle Type</th>
+                        <th class="h-10 px-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Driver</th>
+                        <th class="h-10 px-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                        <th class="h-10 px-6 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="vehiclesBody" class="divide-y divide-slate-100">
+                    <tr>
+                        <td colspan="6" class="text-center py-12 text-sm text-slate-400">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <!-- Modal -->
-<div class="modal-overlay" id="modalOverlay">
-    <div class="modal-box">
-        <div class="modal-header">
-            <div class="modal-title" id="modalTitle">Add Vehicle</div>
-            <button onclick="closeModal()" style="border:none; background:none; cursor:pointer; color:#94a3b8;">
-                <i class="fas fa-times"></i>
+<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-[3000]" id="modalOverlay">
+    <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden" id="modalBox">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+            <h3 class="text-lg font-bold text-slate-800" id="modalTitle">Add Vehicle</h3>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                <i data-lucide="x" class="w-5 h-5"></i>
             </button>
         </div>
-        <div class="modal-body">
+        <div class="p-6 space-y-4">
             <input type="hidden" id="vehicleId">
-            <div class="form-group">
-                <label>Plate Number</label>
-                <input type="text" id="plateNumber" class="form-control" placeholder="e.g. SG1234X">
+            <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1">Plate Number</label>
+                <input type="text" id="plateNumber" class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-mono" placeholder="e.g. SG1234X">
             </div>
-            <div class="form-group">
-                <label>Nickname (Optional)</label>
-                <input type="text" id="nickname" class="form-control" placeholder="Original Blue Bus">
+            <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1">Nickname (Optional)</label>
+                <input type="text" id="nickname" class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all" placeholder="Original Blue Bus">
             </div>
-            <div class="form-group">
-                <label>Vehicle Type</label>
-                <select id="typeId" class="form-control">
+            <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1">Vehicle Type</label>
+                <select id="typeId" class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all">
                     <option value="">Loading types...</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label>Driver Name</label>
-                <input type="text" id="driverName" class="form-control" placeholder="Driver Name">
+            <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1">Driver Name</label>
+                <input type="text" id="driverName" class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all" placeholder="Driver Name">
             </div>
-            <div class="form-group">
-                <label>Status</label>
-                <select id="status" class="form-control">
+            <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1">Status</label>
+                <select id="status" class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-md focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all">
                     <option value="active">Active</option>
                     <option value="maintenance">Maintenance</option>
                 </select>
             </div>
         </div>
-        <div class="modal-footer">
-            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
-            <button class="btn-primary" onclick="saveVehicle()">Save Changes</button>
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+            <button class="px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-medium rounded-md transition-colors shadow-sm" onclick="closeModal()">Cancel</button>
+            <button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-md transition-colors shadow-sm" onclick="saveVehicle()">Save Changes</button>
         </div>
     </div>
 </div>
@@ -355,36 +127,40 @@
     function renderVehicles(vehicles) {
         const tbody = document.getElementById('vehiclesBody');
         if (vehicles.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;">No vehicles found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-12 text-sm text-slate-400">No vehicles found.</td></tr>`;
             return;
         }
 
-        tbody.innerHTML = vehicles.map(v => `
-            <tr>
-                <td>
-                    <div style="font-weight:600; color:#334155;">${escapeHtml(v.plate_number)}</div>
-                    <div style="font-size:0.75rem; color:#94a3b8;">${escapeHtml(v.id)}</div>
+                tbody.innerHTML = vehicles.map(v => {
+            const statusBadge = v.status === 'active' 
+                ? '<span class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-xs font-bold border border-emerald-200"><i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Active</span>'
+                : '<span class="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full text-xs font-bold border border-rose-200"><i data-lucide="wrench" class="w-3.5 h-3.5"></i> Maintenance</span>';
+            
+            return `
+            <tr class="hover:bg-slate-50 transition-colors group">
+                <td class="px-6 py-4">
+                    <div class="font-bold text-slate-800 font-mono text-sm">${escapeHtml(v.plate_number)}</div>
+                    <div class="text-[10px] text-slate-400 font-mono">${escapeHtml(v.id)}</div>
                 </td>
-                <td>${escapeHtml(v.nickname || '-')}</td>
-                <td>
-                    <span style="background:#eff6ff; color:#1d4ed8; padding:2px 6px; border-radius:4px; font-size:0.8rem;">
+                <td class="px-6 py-4 text-sm font-medium text-slate-600">${escapeHtml(v.nickname || '-')}</td>
+                <td class="px-6 py-4">
+                    <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-semibold border border-blue-100">
                         ${escapeHtml(v.type_name || 'Unknown Type')}
                     </span>
                 </td>
-                <td>${escapeHtml(v.driver_name || '-')}</td>
-                <td>
-                    <span class="status-badge ${v.status === 'active' ? 'status-active' : 'status-maintenance'}">
-                        ${v.status === 'active' ? '<i class="fas fa-check-circle"></i> Active' : '<i class="fas fa-tools"></i> Maintenance'}
-                    </span>
-                </td>
-                <td>
-                    <div class="actions">
-                        <button class="btn-icon" onclick="editVehicle('${v.id}')"><i class="fas fa-pencil-alt"></i></button>
-                        <button class="btn-icon delete" onclick="deleteVehicle('${v.id}')"><i class="fas fa-trash"></i></button>
+                <td class="px-6 py-4 text-sm text-slate-600">${escapeHtml(v.driver_name || '-')}</td>
+                <td class="px-6 py-4">${statusBadge}</td>
+                <td class="px-6 py-4 text-right">
+                    <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button class="w-8 h-8 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" onclick="editVehicle('${v.id}')"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                        <button class="w-8 h-8 flex items-center justify-center rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors" onclick="deleteVehicle('${v.id}')"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                     </div>
                 </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     function escapeHtml(text) {
@@ -404,11 +180,11 @@
         document.getElementById('typeId').value = vehicle ? vehicle.type_id || '' : '';
         document.getElementById('driverName').value = vehicle ? vehicle.driver_name : '';
         document.getElementById('status').value = vehicle ? vehicle.status : 'active';
-        document.getElementById('modalOverlay').classList.add('show');
+        document.getElementById('modalOverlay').classList.remove('hidden'); document.getElementById('modalOverlay').classList.add('flex');
     }
 
     function closeModal() {
-        document.getElementById('modalOverlay').classList.remove('show');
+        document.getElementById('modalOverlay').classList.add('hidden'); document.getElementById('modalOverlay').classList.remove('flex');
     }
 
     async function editVehicle(id) {

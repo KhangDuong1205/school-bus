@@ -24,9 +24,11 @@ Rules:
 - ALWAYS respond in English, regardless of the language the user writes in.
   All summaries, clarifications, and free-text replies must be English only.
 - Buses are referenced by their 1-indexed `bus_number` (1, 2, 3, ...).
-- Students are referenced by `student_id` (preferred) or `name`. If a name is
-  ambiguous (matches multiple students), call `ask_clarification` instead of
-  guessing.
+- Students can be referenced by `address`, `name`, or `student_id`. The UI
+  shows `address` as the primary identifier, so users will most often refer to
+  students by address. Use `student_id` when you need to disambiguate (it is
+  unique). If a reference matches multiple students, call `ask_clarification`
+  instead of guessing.
 - A single user message may contain multiple independent operations. Emit one
   tool call per operation; they will all be applied atomically.
 - Only emit tool calls for operations the user explicitly requested. Do not
@@ -51,7 +53,7 @@ TOOL_DECLARATIONS = [
                 "student_refs": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of student identifiers (student_id preferred, otherwise name)."
+                    "description": "List of student identifiers (address, name, or student_id). Address is what users typically see, so prefer it unless a student_id was explicitly provided."
                 },
                 "from_bus": {"type": "integer", "description": "Source bus_number (1-indexed). Use 0 if the source is unknown — the resolver will find each student."},
                 "to_bus": {"type": "integer", "description": "Destination bus_number (1-indexed)."}
@@ -65,8 +67,8 @@ TOOL_DECLARATIONS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "student_a_ref": {"type": "string", "description": "First student (id or name)."},
-                "student_b_ref": {"type": "string", "description": "Second student (id or name)."}
+                "student_a_ref": {"type": "string", "description": "First student (address, name, or student_id)."},
+                "student_b_ref": {"type": "string", "description": "Second student (address, name, or student_id)."}
             },
             "required": ["student_a_ref", "student_b_ref"]
         }
@@ -107,7 +109,7 @@ TOOL_DECLARATIONS = [
                 "new_order": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Student ids/names in the desired pickup order. Must contain every student currently on the bus."
+                    "description": "Student references (address, name, or student_id) in the desired pickup order. Must contain every student currently on the bus."
                 }
             },
             "required": ["bus_number", "new_order"]
@@ -165,6 +167,7 @@ def compact_routes_for_prompt(routes: List[Dict]) -> Dict:
                 {
                     "student_id": str(s.get('student_id', s.get('id', ''))),
                     "name": s.get('name', ''),
+                    "address": s.get('address', ''),
                     "pickup_time": s.get('pickup_time', '')
                 }
                 for s in r.get('students', [])
@@ -173,8 +176,15 @@ def compact_routes_for_prompt(routes: List[Dict]) -> Dict:
     return {"buses": compact}
 
 
+def _student_display(student: Dict) -> str:
+    """Readable label for chat summaries — matches what the user sees in UI."""
+    return (str(student.get('address') or '').strip()
+            or str(student.get('name') or '').strip()
+            or str(student.get('student_id') or student.get('id') or '?'))
+
+
 def _find_student(routes: List[Dict], ref: str) -> List[Tuple[int, int, Dict]]:
-    """Return all (bus_index, student_index, student) matching ref by id or name."""
+    """Return all (bus_index, student_index, student) matching ref by id, name, or address."""
     if ref is None:
         return []
     ref_str = str(ref).strip()
@@ -184,14 +194,21 @@ def _find_student(routes: List[Dict], ref: str) -> List[Tuple[int, int, Dict]]:
         for si, student in enumerate(route.get('students', [])):
             sid = str(student.get('student_id', student.get('id', ''))).strip()
             sname = str(student.get('name', '')).strip()
+            saddr = str(student.get('address', '')).strip()
             if sid and sid == ref_str:
                 matches.append((bi, si, student))
                 continue
-            if sname.lower() == ref_lower:
+            if sname and sname.lower() == ref_lower:
+                matches.append((bi, si, student))
+                continue
+            if saddr and saddr.lower() == ref_lower:
                 matches.append((bi, si, student))
                 continue
             # Looser substring fallback (only if no exact matches found yet)
-            if ref_lower and ref_lower in sname.lower():
+            if ref_lower and (
+                (sname and ref_lower in sname.lower())
+                or (saddr and ref_lower in saddr.lower())
+            ):
                 matches.append((bi, si, student))
     # De-duplicate while preserving order
     seen = set()
@@ -214,7 +231,7 @@ def _resolve_refs(routes: List[Dict], refs: List[str]) -> Tuple[List[Tuple[int, 
         if not matches:
             errors.append(f"Student '{ref}' not found")
         elif len(matches) > 1:
-            names = ", ".join(f"{m[2].get('name','?')} (id {m[2].get('student_id','?')})" for m in matches[:5])
+            names = ", ".join(f"{_student_display(m[2])} (id {m[2].get('student_id','?')})" for m in matches[:5])
             errors.append(f"Ambiguous reference '{ref}' — matches: {names}")
         else:
             resolved.append(matches[0])
@@ -252,7 +269,7 @@ def _apply_move_students(routes, args):
             continue  # already on the destination bus
         routes[bi]['students'].pop(si)
         routes[to_idx]['students'].append(student)
-        moved.append(student.get('name', student.get('student_id', '?')))
+        moved.append(_student_display(student))
     return {"ok": True, "summary": f"Moved {len(moved)} student(s) to Bus {int(to_bus)}: {', '.join(moved)}"}
 
 
@@ -271,7 +288,7 @@ def _apply_swap_students(routes, args):
         return {"ok": False, "error": "Both students are on the same bus — use reorder_pickup instead"}
     routes[abi]['students'][asi] = b_student
     routes[bbi]['students'][bsi] = a_student
-    return {"ok": True, "summary": f"Swapped {a_student.get('name','?')} (Bus {abi+1}) ↔ {b_student.get('name','?')} (Bus {bbi+1})"}
+    return {"ok": True, "summary": f"Swapped {_student_display(a_student)} (Bus {abi+1}) ↔ {_student_display(b_student)} (Bus {bbi+1})"}
 
 
 def _apply_move_to_new_bus(routes, args):
@@ -295,7 +312,7 @@ def _apply_move_to_new_bus(routes, args):
     for bi, si, student in resolved:
         routes[bi]['students'].pop(si)
         new_route['students'].append(student)
-        moved.append(student.get('name', '?'))
+        moved.append(_student_display(student))
     new_route['student_count'] = len(new_route['students'])
     routes.append(new_route)
     return {"ok": True, "summary": f"Created new Bus {len(routes)} with {len(moved)} student(s): {', '.join(moved)}"}
@@ -328,9 +345,12 @@ def _apply_reorder_pickup(routes, args):
     reordered = []
     used = set()
     for ref in new_order:
+        ref_str = str(ref).strip()
+        ref_lower = ref_str.lower()
         matches = [(si, s) for si, s in enumerate(current)
-                   if str(s.get('student_id', s.get('id',''))).strip() == str(ref).strip()
-                   or str(s.get('name','')).strip().lower() == str(ref).strip().lower()]
+                   if str(s.get('student_id', s.get('id',''))).strip() == ref_str
+                   or str(s.get('name','')).strip().lower() == ref_lower
+                   or str(s.get('address','')).strip().lower() == ref_lower]
         matches = [m for m in matches if m[0] not in used]
         if not matches:
             return {"ok": False, "error": f"Student '{ref}' not on Bus {bus_number}"}
@@ -349,7 +369,7 @@ def _apply_remove_students(routes, args):
     removed = []
     for bi, si, student in resolved:
         routes[bi]['students'].pop(si)
-        removed.append(student.get('name', '?'))
+        removed.append(_student_display(student))
     return {"ok": True, "summary": f"Removed {len(removed)} student(s): {', '.join(removed)}"}
 
 
