@@ -256,89 +256,6 @@ def set_school():
         return jsonify({'error': f'Invalid coordinates: {e}'}), 400
 
 
-@app.route('/api/analyze-clusters', methods=['GET'])
-def analyze_clusters():
-    """Analyze student clusters and return visualization data"""
-    print(f"\n=== Analyze Clusters Request ===")
-    print(f"Number of students: {len(students)}")
-    print(f"School location set: {school_location is not None}")
-    
-    if not students:
-        print("No students - returning empty clusters")
-        return jsonify({'clusters': []})
-    
-    if not school_location:
-        print("No school location - returning empty clusters")
-        return jsonify({'clusters': []})
-    
-    from route_optimizer import analyze_student_clusters
-    
-    analysis = analyze_student_clusters(students, school_location)
-    
-    clusters = analysis.get('visualization', {}).get('clusters', [])
-    isolated = analysis.get('visualization', {}).get('isolated', [])
-    print(f"Clusters found: {len(clusters)}")
-    for i, cluster in enumerate(clusters):
-        print(f"  Cluster {i+1}: {cluster['size']} students, center: ({cluster['center']['lat']:.4f}, {cluster['center']['lng']:.4f}), radius: {cluster['radius']:.0f}m")
-    
-    if isolated:
-        print(f"Isolated students: {len(isolated)}")
-        for iso in isolated:
-            print(f"  - {iso['name']}")
-    
-    result = {
-        'clusters': clusters,
-        'isolated': isolated,
-        'n_clusters': analysis.get('n_clusters', 0),
-        'n_noise': analysis.get('n_noise', 0),
-        'recommendation': analysis.get('recommendation', '')
-    }
-    
-    print(f"Returning: {len(result['clusters'])} clusters, {len(result['isolated'])} isolated")
-    return jsonify(result)
-
-
-@app.route('/api/analyze-clusters', methods=['POST'])
-def analyze_clusters_endpoint():
-    """Analyze student clusters without running full optimization"""
-    from route_optimizer import analyze_student_clusters
-    
-    if not school_location:
-        return jsonify({'error': 'Please set school location first'}), 400
-    
-    if not students or len(students) == 0:
-        return jsonify({'error': 'Please add students first'}), 400
-    
-    print(f"\n=== Analyze Clusters Request ===")
-    print(f"School location: {school_location.get('address', 'Unknown')}")
-    print(f"Number of students: {len(students)}")
-    
-    # Run cluster analysis
-    result = analyze_student_clusters(students, school_location)
-    
-    # Format response with cluster visualization data
-    clusters = []
-    for cluster in result.get('cluster_info', []):
-        clusters.append({
-            'id': cluster['id'],
-            'size': cluster['size'],
-            'center': {'lat': cluster['center'][0], 'lng': cluster['center'][1]},
-            'distance_from_school': round(cluster['distance_from_school'], 2),
-            'students': [{'name': s['name'], 'lat': s['latitude'], 'lng': s['longitude']} 
-                        for s in cluster['students']]
-        })
-    
-    isolated = [{'name': s['name'], 'lat': s['latitude'], 'lng': s['longitude']} 
-                for s in result.get('isolated_students', [])]
-    
-    return jsonify({
-        'n_clusters': result.get('n_clusters', len(clusters)),
-        'clusters': clusters,
-        'isolated_students': isolated,
-        'total_students': len(students)
-    })
-
-
 @app.route('/api/optimise-routes', methods=['POST'])
 def optimise_routes_endpoint():
     """Optimise bus routes"""
@@ -351,7 +268,6 @@ def optimise_routes_endpoint():
     
     # Advanced parameters
     service_time = int(data.get('service_time', 60))
-    avg_speed = int(data.get('avg_speed', 50))
     base_bus_cost = 5000  # Hardcoded default
     penalty_per_seat = 200  # Hardcoded default
     
@@ -392,7 +308,6 @@ def optimise_routes_endpoint():
         # Package advanced parameters
         advanced_params = {
             'service_time': service_time,
-            'avg_speed': avg_speed,
             'base_bus_cost': base_bus_cost,
             'penalty_per_seat': penalty_per_seat
         }
@@ -475,19 +390,21 @@ def recalculate_routes_endpoint():
     routes = data.get('routes', [])
     school_time = data.get('school_time', '07:30')
     max_ride_time = int(data.get('max_ride_time', 60))
-    
+    service_time = int(data.get('service_time', 60))
+
     if not school_location:
         return jsonify({'error': 'School location missing'}), 400
-        
+
     try:
         hours, minutes = map(int, school_time.split(':'))
         school_arrival_seconds = hours * 3600 + minutes * 60
     except:
         school_arrival_seconds = 27000
-        
+
     try:
         recalculated = recalculate_manually_adjusted_routes(
-            routes, school_location, API_KEY, school_arrival_seconds, max_ride_time
+            routes, school_location, API_KEY, school_arrival_seconds, max_ride_time,
+            service_time=service_time
         )
         return jsonify({'success': True, 'routes': recalculated})
     except Exception as e:
@@ -498,33 +415,110 @@ def recalculate_routes_endpoint():
 
 @app.route('/api/fetch-geometry', methods=['POST'])
 def fetch_geometry_endpoint():
-    """Fetch real road geometry for a single route on-demand"""
+    """Fetch real road geometry for a single route on-demand.
+
+    Uses the local OSM graph (singapore_drive.graphml) via OSMnx — no OneMap
+    call here, so this works even without ONEMAP_EMAIL/PASSWORD configured.
+    """
     from route_optimizer import enrich_routes_with_geometry
 
     data = request.json
     route = data.get('route')
     school_time = data.get('school_time', '07:30')
     max_ride_time = int(data.get('max_ride_time', 60))
+    service_time = int(data.get('service_time', 60))
 
     if not route:
         return jsonify({'error': 'Route data is required'}), 400
-
-    api_key = get_api_key()
-    if not api_key:
-        return jsonify({'error': 'OneMap API key not configured'}), 500
 
     # Parse school time
     time_parts = school_time.split(':')
     arrival_seconds = int(time_parts[0]) * 3600 + int(time_parts[1]) * 60
 
     try:
-        enriched_routes = enrich_routes_with_geometry([route], api_key, arrival_seconds, max_ride_time)
+        # api_key arg is kept for signature compatibility but unused downstream.
+        enriched_routes = enrich_routes_with_geometry(
+            [route], None, arrival_seconds, max_ride_time,
+            service_time=service_time
+        )
         return jsonify({'route': enriched_routes[0]})
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"Error fetching geometry: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/road-types-geojson', methods=['GET'])
+def road_types_geojson_endpoint():
+    """Serve the Singapore drive network as GeoJSON, color-keyed by OSM
+    `highway` tag. Used by the front-end overlay so the user can eyeball
+    whether OSM tags match real road tier (and whether the
+    SCHOOL_BUS_SPEED_KMH calibration is plausible).
+
+    Builds once and caches to disk — the graph is static so subsequent
+    calls just stream the file.
+    """
+    import json as _json
+    from flask import send_file
+
+    cache_path = os.path.join(os.path.dirname(__file__), 'sg_osm', 'road_types.geojson')
+
+    if not os.path.exists(cache_path):
+        from local_routing import get_graph
+        from route_optimizer import edge_bus_speed_kmh, SCHOOL_BUS_SPEED_KMH
+
+        g = get_graph()
+        features = []
+        skipped = 0
+        for u, v, k, data in g.edges(keys=True, data=True):
+            geom = data.get('geometry')
+            highway = data.get('highway')
+            if isinstance(highway, list):
+                highway = highway[0] if highway else None
+            highway_str = str(highway) if highway is not None else 'unknown'
+
+            if geom is not None:
+                try:
+                    coords = [[lng, lat] for lng, lat in geom.coords]
+                except Exception:
+                    coords = None
+            else:
+                coords = None
+
+            if not coords:
+                # Fallback: straight line between the two nodes.
+                try:
+                    u_node = g.nodes[u]
+                    v_node = g.nodes[v]
+                    coords = [
+                        [float(u_node['x']), float(u_node['y'])],
+                        [float(v_node['x']), float(v_node['y'])],
+                    ]
+                except Exception:
+                    skipped += 1
+                    continue
+
+            speed = edge_bus_speed_kmh(highway)
+            in_table = highway_str in SCHOOL_BUS_SPEED_KMH
+            features.append({
+                'type': 'Feature',
+                'geometry': {'type': 'LineString', 'coordinates': coords},
+                'properties': {
+                    'highway': highway_str,
+                    'speed_kmh': speed,
+                    'in_table': in_table,
+                },
+            })
+
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, 'w') as f:
+            _json.dump({'type': 'FeatureCollection', 'features': features}, f)
+        print(f"[road_types] Built GeoJSON: {len(features)} features, {skipped} skipped → {cache_path}")
+
+    response = send_file(cache_path, mimetype='application/json')
+    response.headers['Cache-Control'] = 'public, max-age=86400'
+    return response
 
 
 @app.route('/api/load-students-csv', methods=['POST'])

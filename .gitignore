@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# OneMap API token cache (contains JWT, must never be committed)
+.onemap_token
+
 # Python
 __pycache__/
 *.py[cod]

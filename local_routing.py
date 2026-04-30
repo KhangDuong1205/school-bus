@@ -1,13 +1,11 @@
 """
 Local Singapore road routing using OpenStreetMap data via OSMnx.
 
-Replaces the slow OneMap routing API for the "fetch real route geometry"
-feature on the map. Distance/time estimates from this module are used purely
-for visualisation — the CVRP optimiser still runs on Haversine distances.
+Used for post-solve route geometry (the polylines drawn on the map).
+The CVRP solver itself uses real road shortest paths via igraph; see
+route_optimizer.build_distance_and_time_matrices_real.
 
-Returns the same tuple shape as `route_optimizer.get_route_from_onemap`:
-    (distance_km: float, time_seconds: float, geometry: List[[lat, lng]])
-so it is a drop-in replacement.
+Returns: (distance_km: float, time_seconds: float, geometry: List[[lat, lng]])
 """
 import os
 import time
@@ -65,6 +63,23 @@ def _load_cached_graph() -> nx.MultiDiGraph:
     return g
 
 
+def _annotate_bus_travel_times(g: nx.MultiDiGraph) -> None:
+    """Add a per-edge `bus_travel_time` (seconds) attribute computed from
+    length + the shared SCHOOL_BUS_SPEED_KMH table. Mutates g in place.
+    Imported lazily to avoid importing route_optimizer at module load."""
+    from route_optimizer import edge_bus_speed_kmh
+    for u, v, k, data in g.edges(keys=True, data=True):
+        ln = data.get('length', 100)
+        if isinstance(ln, list):
+            ln = ln[0]
+        try:
+            ln = float(ln) if ln is not None else 100.0
+        except (TypeError, ValueError):
+            ln = 100.0
+        speed = edge_bus_speed_kmh(data.get('highway'))
+        data['bus_travel_time'] = ln * 3.6 / speed
+
+
 def get_graph() -> nx.MultiDiGraph:
     """Lazy singleton. Build/load on first call, reuse afterwards."""
     global _GRAPH
@@ -77,6 +92,7 @@ def get_graph() -> nx.MultiDiGraph:
             _GRAPH = _load_cached_graph()
         else:
             _GRAPH = _build_graph_from_overpass()
+        _annotate_bus_travel_times(_GRAPH)
     return _GRAPH
 
 
@@ -89,78 +105,64 @@ def get_route_local(start_lat: float, start_lng: float,
     """
     Compute a drive route between two points using the local OSM graph.
     Returns (distance_km, time_seconds, [[lat, lng], ...]).
-
-    Falls back to a straight-line geometry on any error so callers never crash.
     """
-    try:
-        g = get_graph()
-        orig = ox.distance.nearest_nodes(g, X=start_lng, Y=start_lat)
-        dest = ox.distance.nearest_nodes(g, X=end_lng,   Y=end_lat)
+    g = get_graph()
+    orig = ox.distance.nearest_nodes(g, X=start_lng, Y=start_lat)
+    dest = ox.distance.nearest_nodes(g, X=end_lng,   Y=end_lat)
 
-        if orig == dest:
-            return 0.0, 0.0, [[start_lat, start_lng], [end_lat, end_lng]]
+    if orig == dest:
+        return 0.0, 0.0, [[start_lat, start_lng], [end_lat, end_lng]]
 
-        path = nx.shortest_path(g, orig, dest, weight='travel_time')
+    path = nx.shortest_path(g, orig, dest, weight='bus_travel_time')
 
-        # Aggregate distance + time along the path
-        total_m = 0.0
-        total_s = 0.0
-        coords: List[List[float]] = []
+    total_m = 0.0
+    total_s = 0.0
+    coords: List[List[float]] = []
 
-        for u, v in zip(path[:-1], path[1:]):
-            edge_data = g.get_edge_data(u, v)
-            # MultiDiGraph: pick edge variant with the lowest travel time
-            best = min(edge_data.values(),
-                       key=lambda e: e.get('travel_time', float('inf')))
-            total_m += best.get('length', 0.0)
-            total_s += best.get('travel_time', 0.0)
+    for u, v in zip(path[:-1], path[1:]):
+        edge_data = g.get_edge_data(u, v)
+        # MultiDiGraph: pick edge variant with the lowest school-bus time
+        best = min(edge_data.values(),
+                   key=lambda e: e.get('bus_travel_time', float('inf')))
+        total_m += best.get('length', 0.0)
+        total_s += best.get('bus_travel_time', 0.0)
 
-            geom = best.get('geometry')
-            if geom is not None:
-                # geom is a shapely LineString; coords are (lng, lat)
-                pts = [[lat, lng] for lng, lat in geom.coords]
-                # Avoid duplicating join points
-                if coords and pts and coords[-1] == pts[0]:
-                    coords.extend(pts[1:])
-                else:
-                    coords.extend(pts)
+        geom = best.get('geometry')
+        if geom is not None:
+            # geom is a shapely LineString; coords are (lng, lat)
+            pts = [[lat, lng] for lng, lat in geom.coords]
+            if coords and pts and coords[-1] == pts[0]:
+                coords.extend(pts[1:])
             else:
-                u_node = g.nodes[u]
-                v_node = g.nodes[v]
-                u_pt = [u_node['y'], u_node['x']]
-                v_pt = [v_node['y'], v_node['x']]
-                if not coords or coords[-1] != u_pt:
-                    coords.append(u_pt)
-                coords.append(v_pt)
+                coords.extend(pts)
+        else:
+            u_node = g.nodes[u]
+            v_node = g.nodes[v]
+            u_pt = [u_node['y'], u_node['x']]
+            v_pt = [v_node['y'], v_node['x']]
+            if not coords or coords[-1] != u_pt:
+                coords.append(u_pt)
+            coords.append(v_pt)
 
-        # Stitch the request endpoints onto the start/end of the road geometry
-        if coords:
-            if coords[0] != [start_lat, start_lng]:
-                coords.insert(0, [start_lat, start_lng])
-            if coords[-1] != [end_lat, end_lng]:
-                coords.append([end_lat, end_lng])
+    if coords:
+        if coords[0] != [start_lat, start_lng]:
+            coords.insert(0, [start_lat, start_lng])
+        if coords[-1] != [end_lat, end_lng]:
+            coords.append([end_lat, end_lng])
 
-        return total_m / 1000.0, total_s, coords
-
-    except Exception as e:
-        print(f"[local_routing] Routing failed ({e}); returning straight line.")
-        return _straight_line_fallback(start_lat, start_lng, end_lat, end_lng)
-
-
-def _straight_line_fallback(start_lat, start_lng, end_lat, end_lng):
-    # Same haversine-based estimate the existing code uses, so callers see
-    # consistent numbers if routing fails.
-    import math
-    R = 6371.0
-    lat1, lat2 = math.radians(start_lat), math.radians(end_lat)
-    dlat = math.radians(end_lat - start_lat)
-    dlng = math.radians(end_lng - start_lng)
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
-    distance_km = 2 * R * math.asin(math.sqrt(a)) * 1.5  # urban detour factor
-    time_s = (distance_km / 35.0) * 3600.0
-    return distance_km, time_s, [[start_lat, start_lng], [end_lat, end_lng]]
+    return total_m / 1000.0, total_s, coords
 
 
 def warmup():
-    """Optional: prefetch the graph on app startup so the first route is fast."""
-    get_graph()
+    """Prefetch the graph AND build the spatial index so the first user fetch is fast.
+
+    Loading the graphml is only half the cost — the very first `nearest_nodes`
+    call builds an internal KDTree over ~700k nodes (5-30s). Force that here.
+    """
+    g = get_graph()
+    try:
+        # Singapore centroid; result discarded — we just want the index built.
+        ox.distance.nearest_nodes(g, X=103.85, Y=1.29)
+        print("[local_routing] Spatial index ready.")
+    except Exception as e:
+        print(f"[local_routing] Spatial index warmup failed: {e}")
