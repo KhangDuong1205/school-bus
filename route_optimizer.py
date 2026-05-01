@@ -36,14 +36,57 @@ SCHOOL_BUS_SPEED_KMH = {
 }
 SCHOOL_BUS_SPEED_DEFAULT_KMH = 25       # fallback for unknown / missing highway tag
 
+# Global safety factor applied uniformly to every road class.
+# 1.0 = no margin (raw cruise speed); lower = more conservative.
+# User-tunable per request via set_safety_factor() / the UI.
+#
+# Implementation note: because the factor is uniform, time = base/factor
+# is just a scalar multiply on the base time matrix — we DO NOT rebuild
+# the cached road graph when the factor changes. The cache stores edge
+# weights at factor=1.0 (computed via edge_base_bus_speed_kmh), and the
+# factor is applied at output (matrix scaling + per-edge display speed).
+SAFETY_FACTOR_DEFAULT = 0.85
+SAFETY_FACTOR_MIN = 0.5
+SAFETY_FACTOR_MAX = 1.0
+_current_safety_factor = SAFETY_FACTOR_DEFAULT
 
-def edge_bus_speed_kmh(highway_tag) -> float:
-    """Effective school-bus cruise speed (km/h) for an OSM edge by its `highway` tag."""
+
+def set_safety_factor(f) -> float:
+    """Update the process-wide bus speed safety factor and return the
+    clamped value actually applied. Note: this is a global — concurrent
+    requests with different factors will race. The codebase already uses
+    this pattern (see _road_graph_state) and Flask requests are typically
+    serial in practice."""
+    global _current_safety_factor
+    try:
+        f = float(f)
+    except (TypeError, ValueError):
+        f = SAFETY_FACTOR_DEFAULT
+    f = max(SAFETY_FACTOR_MIN, min(SAFETY_FACTOR_MAX, f))
+    _current_safety_factor = f
+    return f
+
+
+def get_safety_factor() -> float:
+    return _current_safety_factor
+
+
+def edge_base_bus_speed_kmh(highway_tag) -> float:
+    """Raw school-bus cruise speed for an OSM edge — no safety factor.
+    Used when building cached edge weights (graph annotations, igraph
+    edge attributes) so the cache is factor-invariant."""
     if isinstance(highway_tag, list):
         highway_tag = highway_tag[0] if highway_tag else None
     if highway_tag is None:
         return SCHOOL_BUS_SPEED_DEFAULT_KMH
     return SCHOOL_BUS_SPEED_KMH.get(str(highway_tag), SCHOOL_BUS_SPEED_DEFAULT_KMH)
+
+
+def edge_bus_speed_kmh(highway_tag) -> float:
+    """Effective school-bus cruise speed (km/h) including the current
+    safety factor. Used for UI display (heatmap road_parts).
+    """
+    return edge_base_bus_speed_kmh(highway_tag) * _current_safety_factor
 
 
 _road_graph_state = {'ig': None, 'tree': None, 'node_ids': None}
@@ -81,9 +124,10 @@ def _get_road_graph():
             except (TypeError, ValueError):
                 ln = 100.0
             lengths.append(ln)
-            # Per-edge effective school-bus time at baseline scale (50 km/h cruise).
-            # length (m) ÷ (speed km/h × 1000/3600) = length × 3.6 / speed (s)
-            speed_kmh = edge_bus_speed_kmh(d.get('highway'))
+            # Per-edge time at base cruise speed (factor=1.0). The runtime
+            # safety factor is applied as a scalar multiply on the final
+            # time matrix — this keeps the cache factor-invariant.
+            speed_kmh = edge_base_bus_speed_kmh(d.get('highway'))
             bus_travel_times.append(ln * 3.6 / speed_kmh)
 
         g = ig.Graph(n=len(node_list), edges=edges, directed=True)
@@ -140,6 +184,11 @@ def build_distance_and_time_matrices_real(
     UNREACHABLE_M = 99_999_000
     UNREACHABLE_S = 9_999_000
 
+    # Cached edge weights are at factor=1.0; divide by current factor to
+    # apply the user's safety margin uniformly to every pair.
+    factor = max(_current_safety_factor, 1e-6)
+    inv_factor = 1.0 / factor
+
     # Two single-source Dijkstras per point: one by bus_travel_time (gives
     # time-optimal path cost), one by length (gives distance-optimal path
     # cost). They may pick different paths for some pairs, but the solver
@@ -155,9 +204,9 @@ def build_distance_and_time_matrices_real(
                 time_matrix[i][j] = UNREACHABLE_S
             else:
                 distance_matrix[i][j] = int(d)
-                time_matrix[i][j] = int(t)
+                time_matrix[i][j] = int(t * inv_factor)
 
-    print("[matrix] Built.", flush=True)
+    print(f"[matrix] Built (safety factor: {factor:.2f}).", flush=True)
     return distance_matrix, time_matrix
 
 # Global cache for distance/route data to avoid repeated API calls
@@ -289,10 +338,11 @@ def get_real_route_geometry_for_segments(route_segments: List[Dict], api_key: st
             if not (from_lat and from_lng and to_lat and to_lng):
                 return i, segment
 
-            distance_km, time_s, geometry = get_route_local(
+            distance_km, time_s, geometry, road_parts = get_route_local(
                 from_lat, from_lng, to_lat, to_lng
             )
             segment['geometry'] = geometry
+            segment['road_parts'] = road_parts
             segment['distance'] = distance_km
             segment['time'] = time_s
             return i, segment

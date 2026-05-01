@@ -221,6 +221,10 @@
                             <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Service (sec/pax)</label>
                             <input type="number" id="serviceTime" value="60" oninput="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
                         </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1" title="Lower = slower, more conservative ETAs. Applied to every road class.">Safety Factor</label>
+                            <input type="number" id="safetyFactor" value="0.85" min="0.5" max="1.0" step="0.05" oninput="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
+                        </div>
                     </div>
 
                     <div id="confirmSettingsWrapper" style="display: none;">
@@ -495,7 +499,7 @@
     // Add keydown listener to inputs to trigger enter to confirm
     document.addEventListener('DOMContentLoaded', () => {
         if(typeof lucide !== 'undefined') lucide.createIcons();
-        const inputs = ['schoolTime', 'maxRideTime', 'serviceTime'];
+        const inputs = ['schoolTime', 'maxRideTime', 'serviceTime', 'safetyFactor'];
         inputs.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -1412,7 +1416,8 @@
                     route: route,
                     school_time: document.getElementById('schoolTime').value,
                     max_ride_time: document.getElementById('maxRideTime').value,
-                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60
+                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
             const result = await response.json();
@@ -1593,7 +1598,8 @@
                 body: JSON.stringify({
                     school_time: document.getElementById('schoolTime').value,
                     max_ride_time: document.getElementById('maxRideTime').value,
-                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60
+                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
 
@@ -1615,7 +1621,8 @@
             if (solverParamsDisplay) {
                 const serviceTime = document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60;
                 const maxRideTime = document.getElementById('maxRideTime') ? document.getElementById('maxRideTime').value : 60;
-                solverParamsDisplay.innerHTML = `<i class="fas fa-cog"></i> Solving: <b>${serviceTime}s</b>/pax, <b>${maxRideTime}min</b> limit`;
+                const safety = document.getElementById('safetyFactor')?.value || 0.85;
+                solverParamsDisplay.innerHTML = `<i class="fas fa-cog"></i> Solving: <b>${serviceTime}s</b>/pax, <b>${maxRideTime}min</b> limit, safety <b>${Number(safety).toFixed(2)}</b>`;
             }
             
             statusDiv.innerHTML = `<span style="color:#10b981;">✅ Optimized! ${result.total_buses} bus(es), ${result.max_route_time_minutes || '?'} min max route</span>`;
@@ -1630,11 +1637,13 @@
                 const schoolTime = document.getElementById('schoolTime').value;
                 const maxRideTime = document.getElementById('maxRideTime').value;
                 const serviceTime = document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60;
-                
+                const safety = document.getElementById('safetyFactor')?.value || 0.85;
+
                 document.getElementById('resultsSummaryText').innerHTML = `
                     <span><strong>Target:</strong> ${schoolTime}</span>
                     <span><strong>Limit:</strong> ${maxRideTime}m</span>
                     <span><strong>Service:</strong> ${serviceTime}s/pax</span>
+                    <span><strong>Safety:</strong> ${Number(safety).toFixed(2)}</span>
                     <span><strong>Result:</strong> ${result.total_buses} Buses</span>
                 `;
             }
@@ -2641,7 +2650,8 @@
                     routes: newRoutes,
                     school_time: document.getElementById('schoolTime').value,
                     max_ride_time: document.getElementById('maxRideTime').value,
-                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60
+                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
 
@@ -2782,7 +2792,8 @@
         expandedStops: new Set(),
         miniMap: null,
         miniMapRouteLayer: null,
-        miniMapMarkers: []
+        miniMapMarkers: [],
+        miniMapLegend: null
     };
 
     function rdpEscape(s) {
@@ -2793,6 +2804,47 @@
     function rdpGradeColor(grade) {
         if (!grade) return RDP_DEFAULT_GRADE_COLOR;
         return GRADE_COLORS[String(grade).toUpperCase()] || RDP_DEFAULT_GRADE_COLOR;
+    }
+
+    // Speed → color gradient for the per-bus mini-map "speed heatmap".
+    // Anchors chosen so the typical post-safety-factor range
+    // (~10 km/h for living_street up to ~68 km/h for motorway) spreads
+    // across the full red→green spectrum.
+    function rdpSpeedColor(kmh) {
+        if (kmh == null || isNaN(kmh)) return '#9ca3af';
+        const t = Math.max(0, Math.min(1, (Number(kmh) - 10) / (70 - 10)));
+        const hue = Math.round(t * 120);
+        return `hsl(${hue}, 78%, 42%)`;
+    }
+
+    function rdpFmtMeters(m) {
+        if (m == null) return '';
+        return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
+    }
+
+    function rdpFmtSeconds(s) {
+        if (s == null) return '';
+        if (s < 60) return `${Math.round(s)} s`;
+        const min = s / 60;
+        return min < 10 ? `${min.toFixed(1)} min` : `${Math.round(min)} min`;
+    }
+
+    function rdpBuildSpeedTooltip(p) {
+        const name = p.road_name
+            ? rdpEscape(p.road_name)
+            : `<span style="color:#94a3b8;font-style:italic">${rdpEscape(p.road_class || 'road')}</span>`;
+        const bus = p.bus_speed_kmh != null ? `${p.bus_speed_kmh} km/h` : '—';
+        const limit = p.maxspeed_kmh != null ? `limit ${p.maxspeed_kmh} km/h` : 'limit n/a';
+        const lengthStr = rdpFmtMeters(p.length_m);
+        const timeStr = rdpFmtSeconds(p.time_s);
+        const sep = (lengthStr && timeStr) ? ' · ' : '';
+        return `
+            <div style="font-size:11px;line-height:1.4;min-width:140px">
+                <div style="font-weight:600;color:#0f172a;margin-bottom:2px">${name}</div>
+                <div><span style="color:#475569">bus</span> <span style="font-weight:600">${bus}</span> <span style="color:#cbd5e1">·</span> <span style="color:#475569">${limit}</span></div>
+                <div style="color:#64748b;font-size:10px;margin-top:1px">${lengthStr}${sep}${timeStr}</div>
+            </div>
+        `;
     }
 
     function rdpInitials(name) {
@@ -3053,30 +3105,99 @@
         }
         rdpState.miniMapMarkers.forEach(m => rdpState.miniMap.removeLayer(m));
         rdpState.miniMapMarkers = [];
+        if (rdpState.miniMapLegend) {
+            rdpState.miniMap.removeControl(rdpState.miniMapLegend);
+            rdpState.miniMapLegend = null;
+        }
 
         const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
 
-        // Polyline: prefer real geometry, else straight lines through students
-        let routeGeometry = [];
+        // Build the polyline. Three modes, in priority order:
+        //   (a) Speed-heatmap: each segment's road_parts → one Leaflet polyline
+        //       per part, colored by bus speed, with a hover tooltip.
+        //   (b) Flat geometry: legacy/fallback when road_parts isn't available
+        //       (e.g. loaded from a saved run that predates this feature).
+        //   (c) Straight lines through stops when no road geometry exists yet.
+        const layers = [];
+        let drewHeatmap = false;
+
         if (route.segments && route.segments.length > 0) {
+            // First pass: collect all road_parts from segments that have them.
+            // Segments without road_parts but with geometry get a plain
+            // route-color line so we don't lose any drawn portion.
+            const flatFallback = [];
             route.segments.forEach(seg => {
-                if (seg.geometry) routeGeometry = routeGeometry.concat(seg.geometry);
+                if (Array.isArray(seg.road_parts) && seg.road_parts.length > 0) {
+                    seg.road_parts.forEach(part => {
+                        if (!part.coords || part.coords.length < 2) return;
+                        const segColor = rdpSpeedColor(part.bus_speed_kmh);
+                        const baseWeight = 5;
+                        const line = L.polyline(part.coords, {
+                            color: segColor,
+                            weight: baseWeight,
+                            opacity: 0.95,
+                            lineCap: 'round',
+                            lineJoin: 'round'
+                        });
+                        line.bindTooltip(rdpBuildSpeedTooltip(part), {
+                            sticky: true,
+                            direction: 'top',
+                            opacity: 0.95,
+                            className: 'rdp-speed-tip'
+                        });
+                        line.on('mouseover', () => line.setStyle({ weight: baseWeight + 3, opacity: 1 }));
+                        line.on('mouseout', () => line.setStyle({ weight: baseWeight, opacity: 0.95 }));
+                        layers.push(line);
+                        drewHeatmap = true;
+                    });
+                } else if (seg.geometry && seg.geometry.length > 0) {
+                    flatFallback.push(seg.geometry);
+                }
+            });
+            flatFallback.forEach(geom => {
+                layers.push(L.polyline(geom, {
+                    color: color, weight: 4, opacity: 0.85,
+                    lineCap: 'round', lineJoin: 'round'
+                }));
             });
         } else if (route.geometry) {
-            routeGeometry = route.geometry;
+            layers.push(L.polyline(route.geometry, {
+                color: color, weight: 4, opacity: 0.85,
+                lineCap: 'round', lineJoin: 'round'
+            }));
         }
 
-        if (routeGeometry.length > 0) {
-            rdpState.miniMapRouteLayer = L.polyline(routeGeometry, {
-                color: color, weight: 4, opacity: 0.85, lineCap: 'round', lineJoin: 'round'
-            }).addTo(rdpState.miniMap);
-        } else {
+        if (layers.length === 0) {
             const points = (route.students || []).map(s => [s.latitude, s.longitude]).filter(p => p[0] && p[1]);
             if (points.length > 1) {
-                rdpState.miniMapRouteLayer = L.polyline(points, {
+                layers.push(L.polyline(points, {
                     color: color, weight: 3, opacity: 0.6, dashArray: '4,6'
-                }).addTo(rdpState.miniMap);
+                }));
             }
+        }
+
+        if (layers.length > 0) {
+            rdpState.miniMapRouteLayer = L.featureGroup(layers).addTo(rdpState.miniMap);
+        }
+
+        if (drewHeatmap) {
+            const legend = L.control({ position: 'bottomleft' });
+            legend.onAdd = function () {
+                const div = L.DomUtil.create('div', 'rdp-speed-legend');
+                const stops = [10, 25, 40, 55, 70];
+                const gradient = stops.map(s => rdpSpeedColor(s)).join(', ');
+                div.innerHTML = `
+                    <div style="font-size:10px;color:#475569;font-weight:600;margin-bottom:3px;letter-spacing:0.02em">Bus speed (km/h)</div>
+                    <div style="height:8px;width:140px;border-radius:4px;background:linear-gradient(90deg, ${gradient});box-shadow:0 1px 2px rgba(15,23,42,0.15)"></div>
+                    <div style="display:flex;justify-content:space-between;font-size:9px;color:#64748b;margin-top:2px;font-family:'JetBrains Mono',monospace">
+                        <span>10</span><span>25</span><span>40</span><span>55</span><span>70+</span>
+                    </div>
+                `;
+                div.style.cssText = 'background:rgba(255,255,255,0.92);padding:6px 8px;border-radius:6px;border:1px solid rgba(15,23,42,0.08);box-shadow:0 2px 6px rgba(15,23,42,0.08);pointer-events:none;';
+                return div;
+            };
+            legend.addTo(rdpState.miniMap);
+            rdpState.miniMapLegend = legend;
         }
 
         // Numbered stop markers
@@ -3546,7 +3667,8 @@
                     history: sendHistory,
                     model: chatModel,
                     school_time: document.getElementById('schoolTime')?.value || '07:30',
-                    max_ride_time: document.getElementById('maxRideTime')?.value || 60
+                    max_ride_time: document.getElementById('maxRideTime')?.value || 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
             const data = await res.json();

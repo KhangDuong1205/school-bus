@@ -259,15 +259,18 @@ def set_school():
 @app.route('/api/optimise-routes', methods=['POST'])
 def optimise_routes_endpoint():
     """Optimise bus routes"""
-    from route_optimizer import optimize_routes
-    
+    from route_optimizer import optimize_routes, set_safety_factor
+
     data = request.json
     max_buses = int(data.get('max_buses', 3))
     school_time = data.get('school_time', '07:30')  # Default 7:30 AM
     max_ride_time = int(data.get('max_ride_time', 60))  # Default 60 minutes
-    
+
     # Advanced parameters
     service_time = int(data.get('service_time', 60))
+    if 'safety_factor' in data:
+        applied = set_safety_factor(data['safety_factor'])
+        print(f"Safety factor: {applied:.2f}")
     base_bus_cost = 5000  # Hardcoded default
     penalty_per_seat = 200  # Hardcoded default
     
@@ -384,13 +387,15 @@ def optimise_routes_endpoint():
 @app.route('/api/recalculate-routes', methods=['POST'])
 def recalculate_routes_endpoint():
     """Recalculate route times and distances after manual drag-and-drop tweaks"""
-    from route_optimizer import recalculate_manually_adjusted_routes
-    
+    from route_optimizer import recalculate_manually_adjusted_routes, set_safety_factor
+
     data = request.json
     routes = data.get('routes', [])
     school_time = data.get('school_time', '07:30')
     max_ride_time = int(data.get('max_ride_time', 60))
     service_time = int(data.get('service_time', 60))
+    if 'safety_factor' in data:
+        set_safety_factor(data['safety_factor'])
 
     if not school_location:
         return jsonify({'error': 'School location missing'}), 400
@@ -420,13 +425,15 @@ def fetch_geometry_endpoint():
     Uses the local OSM graph (singapore_drive.graphml) via OSMnx — no OneMap
     call here, so this works even without ONEMAP_EMAIL/PASSWORD configured.
     """
-    from route_optimizer import enrich_routes_with_geometry
+    from route_optimizer import enrich_routes_with_geometry, set_safety_factor
 
     data = request.json
     route = data.get('route')
     school_time = data.get('school_time', '07:30')
     max_ride_time = int(data.get('max_ride_time', 60))
     service_time = int(data.get('service_time', 60))
+    if 'safety_factor' in data:
+        set_safety_factor(data['safety_factor'])
 
     if not route:
         return jsonify({'error': 'Route data is required'}), 400
@@ -466,7 +473,9 @@ def road_types_geojson_endpoint():
 
     if not os.path.exists(cache_path):
         from local_routing import get_graph
-        from route_optimizer import edge_bus_speed_kmh, SCHOOL_BUS_SPEED_KMH
+        # Use BASE speed (no safety factor) — this overlay represents the
+        # road-class table itself, independent of the runtime factor.
+        from route_optimizer import edge_base_bus_speed_kmh as edge_bus_speed_kmh, SCHOOL_BUS_SPEED_KMH
 
         g = get_graph()
         features = []
@@ -971,7 +980,7 @@ def chat_endpoint():
       }
     """
     from chat_handler import run_chat, collect_warnings
-    from route_optimizer import recalculate_manually_adjusted_routes
+    from route_optimizer import recalculate_manually_adjusted_routes, set_safety_factor
 
     data = request.json or {}
     message = (data.get('message') or '').strip()
@@ -983,6 +992,8 @@ def chat_endpoint():
     model = data.get('model') or os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
     school_time = data.get('school_time', '07:30')
     max_ride_time = int(data.get('max_ride_time', 60))
+    if 'safety_factor' in data:
+        set_safety_factor(data['safety_factor'])
 
     try:
         result = run_chat(message, incoming_routes, history, model_name=model)
