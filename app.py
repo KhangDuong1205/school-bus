@@ -77,46 +77,148 @@ AVERAGE_PICKUP_TIME = 60  # seconds per student pickup
 # CSV file path for default students
 STUDENT_CSV_PATH = os.path.join(os.path.dirname(__file__), 'student-data', 'swat XCL dan test upload - Sheet1.csv')
 
+def geocode_address_onemap(search_val, api_key):
+    """Geocode an address using OneMap search API. Returns (lat, lng, postal, full_address) or None."""
+    import time
+    url = 'https://www.onemap.gov.sg/api/common/elastic/search'
+    params = {
+        'searchVal': search_val,
+        'returnGeom': 'Y',
+        'getAddrDetails': 'Y',
+        'pageNum': 1
+    }
+    headers = {'Authorization': api_key}
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+        if result.get('found', 0) > 0:
+            first = result['results'][0]
+            return (
+                float(first.get('LATITUDE', 0)),
+                float(first.get('LONGITUDE', 0)),
+                first.get('POSTAL', ''),
+                first.get('ADDRESS', '')
+            )
+    except Exception as e:
+        print(f"OneMap geocode error for '{search_val}': {e}")
+    return None
+
 def load_students_from_csv():
-    """Load students from CSV file (students only, school location is set via Settings)"""
+    """Load students from CSV file. Auto-detects SWAT or kenny format."""
     loaded_students = []
-    
+
     if not os.path.exists(STUDENT_CSV_PATH):
         print(f"CSV file not found: {STUDENT_CSV_PATH}")
         return loaded_students
-    
+
     try:
-        with open(STUDENT_CSV_PATH, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for idx, row in enumerate(reader, start=1):
-                # Extract student data from CSV columns
-                # User Requirement: Capture student_id and remark
+        # Try multiple encodings (Excel often saves as Windows-1252)
+        csv_text = None
+        for enc in ['utf-8', 'latin-1', 'windows-1252']:
+            try:
+                with open(STUDENT_CSV_PATH, 'r', encoding=enc) as f:
+                    csv_text = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+        if csv_text is None:
+            print("Failed to decode CSV file with any encoding")
+            return loaded_students
+
+        reader = csv.DictReader(io.StringIO(csv_text))
+        rows = list(reader)
+
+        if not rows:
+            return loaded_students
+
+        # Detect format
+        is_kenny_format = 'No' in rows[0] and 'Street' in rows[0]
+
+        api_key = None
+        geo_errors = 0
+        if is_kenny_format:
+            api_key = get_api_key()
+            if not api_key:
+                print("ERROR: OneMap API key required for address geocoding")
+                return loaded_students
+
+        for idx, row in enumerate(rows, start=1):
+            if is_kenny_format:
+                student_id = row.get('Student ID', str(idx))
+                name = row.get('First Name', '')
+                unit_no = row.get('No', '')
+                street = row.get('Street', '')
+                condo = row.get('Condo/Bldg', '')
+                postal = row.get('Postal', '')
+                pick_up_loc = row.get('Pick up location', '')
+
+                if not name:
+                    continue
+
+                address_parts = [unit_no, street]
+                if condo:
+                    address_parts.append(condo)
+                address = ' '.join(p for p in address_parts if p)
+                address += f', Singapore {postal}' if postal else ''
+
+                lat, lng = None, None
+                search_query = ' '.join(p for p in [unit_no, street, condo] if p)
+                result = geocode_address_onemap(search_query, api_key)
+                if result:
+                    lat, lng, geocoded_postal, full_addr = result
+                elif postal:
+                    result = geocode_address_onemap(postal, api_key)
+                    if result:
+                        lat, lng, geocoded_postal, full_addr = result
+
+                if lat is None or lng is None:
+                    print(f"Geocode failed for: {search_query or postal}")
+                    geo_errors += 1
+                    continue
+
+                if postal and geocoded_postal and postal != geocoded_postal:
+                    print(f"Postal mismatch for {name}: file={postal}, OneMap={geocoded_postal}")
+
+                student = {
+                    'id': idx,
+                    'student_id': student_id,
+                    'name': name,
+                    'address': address,
+                    'postal': geocoded_postal or postal,
+                    'address_note': pick_up_loc,
+                    'latitude': lat,
+                    'longitude': lng,
+                    'family_code': '',
+                    'special_needs': False
+                }
+                loaded_students.append(student)
+            else:
+                # Original SWAT format
                 student_id = row.get('student_id', row.get('ID', str(idx)))
                 name = row.get("Sender's first name", row.get('Name', row.get('name', row.get('student_name', ''))))
-                
+
                 address = row.get('Pick-up address line 1', '')
                 address_2 = row.get('Pick-up address line 2', '')
                 if address_2 and address_2 != 'Null':
                     address = f"{address}, {address_2}"
-                
-                # Check for 'remark' field
+
                 remark = row.get('remark', row.get('Remark', ''))
-                
+
                 latitude = row.get('latitude', row.get('Pick-up latitude', ''))
                 longitude = row.get('longitude', row.get('Pick-up longitude', ''))
-                
-                # Skip rows with missing coordinates
+
                 if not latitude or not longitude:
                     continue
-                
+
                 try:
                     student = {
-                        'id': idx,  # Internal ID for UI
-                        'student_id': student_id, # Original ID from CSV
+                        'id': idx,
+                        'student_id': student_id,
                         'name': name,
                         'address': address,
-                        'postal': '',  # CSV doesn't have postal code
-                        'address_note': remark, # Store remark
+                        'postal': '',
+                        'address_note': remark,
                         'latitude': float(latitude),
                         'longitude': float(longitude),
                         'family_code': str(row.get('family_code', row.get('Family Code', ''))),
@@ -124,10 +226,10 @@ def load_students_from_csv():
                     }
                     loaded_students.append(student)
                 except ValueError:
-                    # Skip rows with invalid coordinates
                     continue
-        
-        print(f"Loaded {len(loaded_students)} students from CSV")
+
+        print(f"Loaded {len(loaded_students)} students from CSV" +
+              (f" ({geo_errors} geocode errors)" if is_kenny_format and geo_errors else ""))
     except Exception as e:
         print(f"Error loading CSV: {e}")
     
@@ -271,8 +373,8 @@ def optimise_routes_endpoint():
     if 'safety_factor' in data:
         applied = set_safety_factor(data['safety_factor'])
         print(f"Safety factor: {applied:.2f}")
-    base_bus_cost = 5000  # Hardcoded default
-    penalty_per_seat = 200  # Hardcoded default
+    base_bus_cost = 0     # Adding a bus is free — use as many as needed
+    penalty_per_seat = 50  # But bigger buses cost more: 14-seater < 40-seater
     
     # Convert school_time (HH:MM) to seconds from midnight
     try:
@@ -456,6 +558,94 @@ def fetch_geometry_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/ai-refine', methods=['POST'])
+def ai_refine_endpoint():
+    """Ask an LLM to look at the current routes and propose feasibility-
+    verified improvements (merge underused buses, relocate outlier students).
+    Each suggestion is checked against hard constraints by recalculating
+    times/distances on the real road graph; only suggestions that pass and
+    actually improve the fleet are returned."""
+    from route_refiner import refine_routes
+    from route_optimizer import set_safety_factor
+
+    data = request.json or {}
+    routes = data.get('routes') or []
+    school_time = data.get('school_time', '07:30')
+    max_ride_time = int(data.get('max_ride_time', 60))
+    service_time = int(data.get('service_time', 60))
+    if 'safety_factor' in data:
+        set_safety_factor(data['safety_factor'])
+
+    if not school_location:
+        return jsonify({'error': 'School location not set'}), 400
+    if not routes:
+        return jsonify({'error': 'No routes to refine'}), 400
+
+    try:
+        hours, minutes = map(int, school_time.split(':'))
+        school_arrival_seconds = hours * 3600 + minutes * 60
+    except Exception:
+        school_arrival_seconds = 27000
+
+    try:
+        result = refine_routes(
+            routes, school_location, API_KEY,
+            school_arrival_seconds, max_ride_time, service_time,
+        )
+        # Strip _routes_after from each suggestion before sending — frontend
+        # doesn't need the full route payload to render cards. The Apply
+        # endpoint will recompute it on demand.
+        for s in result.get('suggestions', []):
+            s.pop('_routes_after', None)
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'AI refine failed: {e}'}), 500
+
+
+@app.route('/api/ai-refine/apply', methods=['POST'])
+def ai_refine_apply_endpoint():
+    """Apply one already-shown suggestion. Re-runs the deterministic
+    feasibility check before applying, since the user may have applied
+    other suggestions in between."""
+    from route_refiner import apply_suggestion
+    from route_optimizer import set_safety_factor
+
+    data = request.json or {}
+    routes = data.get('routes') or []
+    suggestion = data.get('suggestion') or {}
+    school_time = data.get('school_time', '07:30')
+    max_ride_time = int(data.get('max_ride_time', 60))
+    service_time = int(data.get('service_time', 60))
+    if 'safety_factor' in data:
+        set_safety_factor(data['safety_factor'])
+
+    if not school_location:
+        return jsonify({'error': 'School location not set'}), 400
+    if not routes or not suggestion:
+        return jsonify({'error': 'routes and suggestion are required'}), 400
+
+    try:
+        hours, minutes = map(int, school_time.split(':'))
+        school_arrival_seconds = hours * 3600 + minutes * 60
+    except Exception:
+        school_arrival_seconds = 27000
+
+    try:
+        result = apply_suggestion(
+            routes, suggestion, school_location, API_KEY,
+            school_arrival_seconds, max_ride_time, service_time,
+        )
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify({'success': True, 'routes': result['routes']})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Apply failed: {e}'}), 500
+
+
 @app.route('/api/road-types-geojson', methods=['GET'])
 def road_types_geojson_endpoint():
     """Serve the Singapore drive network as GeoJSON, color-keyed by OSM
@@ -554,48 +744,142 @@ def upload_students_csv_endpoint():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
         
-    if file and file.filename.endswith('.csv'):
-        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-        reader = csv.DictReader(stream)
-        loaded_students = []
-        
-        start_id = len(students) + 1
-        for idx, row in enumerate(reader, start=start_id):
-            student_id = row.get('student_id', row.get('ID', str(idx)))
-            name = row.get("Sender's first name", row.get('Name', row.get('name', row.get('student_name', ''))))
-            address = row.get('Pick-up address line 1', '')
-            address_2 = row.get('Pick-up address line 2', '')
-            if address_2 and address_2 != 'Null':
-                address = f"{address}, {address_2}"
-            remark = row.get('remark', row.get('Remark', ''))
-            latitude = row.get('latitude', row.get('Pick-up latitude', ''))
-            longitude = row.get('longitude', row.get('Pick-up longitude', ''))
-            
-            if not latitude or not longitude:
-                continue
-            
+    if file and (file.filename.endswith('.csv') or file.filename.endswith('.xlsx')):
+        csv_data = file.stream.read()
+        if file.filename.endswith('.xlsx'):
             try:
+                import openpyxl
+                wb = openpyxl.load_workbook(io.BytesIO(csv_data))
+                sheet = wb.active
+                rows = list(sheet.iter_rows(values_only=True))
+                if not rows:
+                    return jsonify({'error': 'Empty Excel file'}), 400
+                header = [str(c) if c else '' for c in rows[0]]
+                data_rows = [dict(zip(header, [str(c) if c is not None else '' for c in r])) for r in rows[1:]]
+            except Exception as e:
+                return jsonify({'error': f'Failed to read Excel file: {e}'}), 400
+        else:
+            csv_text = None
+            for enc in ['utf-8', 'latin-1', 'windows-1252']:
+                try:
+                    csv_text = csv_data.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if csv_text is None:
+                return jsonify({'error': 'Failed to decode file encoding'}), 400
+            reader = csv.DictReader(io.StringIO(csv_text))
+            data_rows = list(reader)
+
+        loaded_students = []
+        start_id = len(students) + 1
+
+        # Detect format: "for kenny" format has 'No' + 'Street' columns
+        is_kenny_format = any('No' in (k or '') and 'Street' in (k or '') for k in (data_rows[0].keys() if data_rows else []))
+
+        api_key = None
+        geo_errors = 0
+        if is_kenny_format:
+            api_key = get_api_key()
+            if not api_key:
+                return jsonify({'error': 'OneMap API key required for address geocoding'}), 500
+
+        for idx, row in enumerate(data_rows, start=start_id):
+            if is_kenny_format:
+                # Parse "for kenny" format: Student ID, First Name, No, Street, Condo/Bldg, Postal, Pick up location
+                student_id = row.get('Student ID', str(idx))
+                name = row.get('First Name', '')
+                unit_no = row.get('No', '')
+                street = row.get('Street', '')
+                condo = row.get('Condo/Bldg', '')
+                postal = row.get('Postal', '')
+                pick_up_loc = row.get('Pick up location', '')
+
+                if not name:
+                    continue
+
+                # Build address
+                address_parts = [unit_no, street]
+                if condo:
+                    address_parts.append(condo)
+                address = ' '.join(p for p in address_parts if p)
+                address += f', Singapore {postal}' if postal else ''
+
+                # Geocode: try (No + Street + Condo) first, fall back to postal code
+                lat, lng = None, None
+                search_query = ' '.join(p for p in [unit_no, street, condo] if p)
+                result = geocode_address_onemap(search_query, api_key)
+                if result:
+                    lat, lng, geocoded_postal, full_addr = result
+                elif postal:
+                    # Fallback: search by postal code
+                    result = geocode_address_onemap(postal, api_key)
+                    if result:
+                        lat, lng, geocoded_postal, full_addr = result
+
+                if lat is None or lng is None:
+                    print(f"Geocode failed for: {search_query or postal}")
+                    geo_errors += 1
+                    continue
+
+                # Validate postal code if we have both
+                if postal and geocoded_postal and postal != geocoded_postal:
+                    print(f"Postal mismatch for {name}: file={postal}, OneMap={geocoded_postal}")
+
+                remark = pick_up_loc
+
                 student = {
                     'id': idx,
                     'student_id': student_id,
                     'name': name,
                     'address': address,
-                    'postal': '',
+                    'postal': geocoded_postal or postal,
                     'address_note': remark,
-                    'latitude': float(latitude),
-                    'longitude': float(longitude),
-                    'family_code': str(row.get('family_code', row.get('Family Code', ''))),
-                    'special_needs': str(row.get('special_needs', row.get('Special Needs', ''))).lower() in ['true', 'yes', '1', 'y']
+                    'latitude': lat,
+                    'longitude': lng,
+                    'family_code': '',
+                    'special_needs': False
                 }
                 loaded_students.append(student)
-            except ValueError:
-                continue
-                
+            else:
+                # Original SWAT format
+                student_id = row.get('student_id', row.get('ID', str(idx)))
+                name = row.get("Sender's first name", row.get('Name', row.get('name', row.get('student_name', ''))))
+                address = row.get('Pick-up address line 1', '')
+                address_2 = row.get('Pick-up address line 2', '')
+                if address_2 and address_2 != 'Null':
+                    address = f"{address}, {address_2}"
+                remark = row.get('remark', row.get('Remark', ''))
+                latitude = row.get('latitude', row.get('Pick-up latitude', ''))
+                longitude = row.get('longitude', row.get('Pick-up longitude', ''))
+
+                if not latitude or not longitude:
+                    continue
+
+                try:
+                    student = {
+                        'id': idx,
+                        'student_id': student_id,
+                        'name': name,
+                        'address': address,
+                        'postal': '',
+                        'address_note': remark,
+                        'latitude': float(latitude),
+                        'longitude': float(longitude),
+                        'family_code': str(row.get('family_code', row.get('Family Code', ''))),
+                        'special_needs': str(row.get('special_needs', row.get('Special Needs', ''))).lower() in ['true', 'yes', '1', 'y']
+                    }
+                    loaded_students.append(student)
+                except ValueError:
+                    continue
+
         students.extend(loaded_students)
         return jsonify({
             'success': True,
             'loaded': len(loaded_students),
-            'total_students': len(students)
+            'total_students': len(students),
+            'format': 'kenny' if is_kenny_format else 'swat',
+            'geo_errors': geo_errors if is_kenny_format else 0
         })
     return jsonify({'error': 'Invalid file format'}), 400
 
@@ -954,7 +1238,7 @@ def export_routes_csv():
         return Response(
             output.getvalue(),
             mimetype="text/csv",
-            headers={"Content-disposition": "attachment; filename=optimized_routes.csv"}
+            headers={"Content-disposition": "attachment; filename=optimised_routes.csv"}
         )
 
     except Exception as e:
@@ -992,6 +1276,7 @@ def chat_endpoint():
     model = data.get('model') or os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
     school_time = data.get('school_time', '07:30')
     max_ride_time = int(data.get('max_ride_time', 60))
+    service_time = int(data.get('service_time', 60))
     if 'safety_factor' in data:
         set_safety_factor(data['safety_factor'])
 
@@ -1019,7 +1304,8 @@ def chat_endpoint():
         try:
             recalculated = recalculate_manually_adjusted_routes(
                 updated_routes, school_location, API_KEY,
-                school_arrival_seconds, max_ride_time
+                school_arrival_seconds, max_ride_time,
+                service_time=service_time
             )
         except Exception as e:
             import traceback

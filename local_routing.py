@@ -20,6 +20,7 @@ import osmnx as ox
 # ---------------------------------------------------------------------------
 
 _GRAPH: Optional[nx.MultiDiGraph] = None
+_GRAPH_UNDIRECTED: Optional[nx.Graph] = None
 _GRAPH_LOCK = Lock()
 
 # Cache the prepared graph next to the PBF file so it persists between runs.
@@ -65,10 +66,12 @@ def _load_cached_graph() -> nx.MultiDiGraph:
 
 def _annotate_bus_travel_times(g: nx.MultiDiGraph) -> None:
     """Add a per-edge `bus_travel_time` (seconds) attribute at factor=1.0
-    base speed. The runtime safety factor is applied at output time in
-    get_route_local — this keeps the cache factor-invariant.
+    base speed. Uses the edge's own `maxspeed` tag where available, with
+    SCHOOL_BUS_SPEED_KMH class-median as fallback. The runtime safety
+    factor is applied at output time in get_route_local — this keeps the
+    cache factor-invariant.
     Imported lazily to avoid importing route_optimizer at module load."""
-    from route_optimizer import edge_base_bus_speed_kmh
+    from route_optimizer import edge_base_bus_speed_for_edge
     for u, v, k, data in g.edges(keys=True, data=True):
         ln = data.get('length', 100)
         if isinstance(ln, list):
@@ -77,13 +80,13 @@ def _annotate_bus_travel_times(g: nx.MultiDiGraph) -> None:
             ln = float(ln) if ln is not None else 100.0
         except (TypeError, ValueError):
             ln = 100.0
-        speed = edge_base_bus_speed_kmh(data.get('highway'))
+        speed = edge_base_bus_speed_for_edge(data)
         data['bus_travel_time'] = ln * 3.6 / speed
 
 
 def get_graph() -> nx.MultiDiGraph:
     """Lazy singleton. Build/load on first call, reuse afterwards."""
-    global _GRAPH
+    global _GRAPH, _GRAPH_UNDIRECTED
     if _GRAPH is not None:
         return _GRAPH
     with _GRAPH_LOCK:
@@ -94,7 +97,17 @@ def get_graph() -> nx.MultiDiGraph:
         else:
             _GRAPH = _build_graph_from_overpass()
         _annotate_bus_travel_times(_GRAPH)
+        _GRAPH_UNDIRECTED = _GRAPH.to_undirected()
     return _GRAPH
+
+
+def get_undirected_graph() -> nx.Graph:
+    """Undirected copy of the road graph. Matches solver's mode='all' Dijkstra."""
+    global _GRAPH_UNDIRECTED
+    if _GRAPH_UNDIRECTED is not None:
+        return _GRAPH_UNDIRECTED
+    get_graph()
+    return _GRAPH_UNDIRECTED
 
 
 # ---------------------------------------------------------------------------
@@ -137,19 +150,20 @@ def get_route_local(start_lat: float, start_lng: float,
     The current process-wide safety factor (route_optimizer.get_safety_factor)
     is applied to all reported speeds and times so the UI matches the solver.
     """
-    from route_optimizer import edge_bus_speed_kmh, get_safety_factor
+    from route_optimizer import edge_bus_speed_for_edge, get_safety_factor
 
     factor = max(get_safety_factor(), 1e-6)
     inv_factor = 1.0 / factor
 
-    g = get_graph()
-    orig = ox.distance.nearest_nodes(g, X=start_lng, Y=start_lat)
-    dest = ox.distance.nearest_nodes(g, X=end_lng,   Y=end_lat)
+    g_undirected = get_undirected_graph()  # ignore one-way to match solver's mode='all'
+    g_directed = get_graph()               # preserves Shapely LineString geometry
+    orig = ox.distance.nearest_nodes(g_undirected, X=start_lng, Y=start_lat)
+    dest = ox.distance.nearest_nodes(g_undirected, X=end_lng,   Y=end_lat)
 
     if orig == dest:
         return 0.0, 0.0, [[start_lat, start_lng], [end_lat, end_lng]], []
 
-    path = nx.shortest_path(g, orig, dest, weight='bus_travel_time')
+    path = nx.shortest_path(g_undirected, orig, dest, weight='bus_travel_time')
 
     total_m = 0.0
     total_s = 0.0
@@ -161,8 +175,15 @@ def get_route_local(start_lat: float, start_lng: float,
         return (road_class, name, maxspeed)
 
     for u, v in zip(path[:-1], path[1:]):
-        edge_data = g.get_edge_data(u, v)
-        # MultiDiGraph: pick edge variant with the lowest school-bus time
+        # Look up edge geometry from the DIRECTED graph so LineStrings are preserved.
+        # to_undirected() can lose or misroute geometry data, but the path itself
+        # must come from the undirected graph to match solver's mode='all'.
+        edge_data = g_directed.get_edge_data(u, v)
+        if not edge_data:
+            edge_data = g_directed.get_edge_data(v, u)
+        # Fallback to undirected if both directed lookups miss (shouldn't happen)
+        if not edge_data:
+            edge_data = g_undirected.get_edge_data(u, v)
         best = min(edge_data.values(),
                    key=lambda e: e.get('bus_travel_time', float('inf')))
 
@@ -172,7 +193,7 @@ def get_route_local(start_lat: float, start_lng: float,
         road_class = _normalize_str(best.get('highway')) or 'unclassified'
         road_name = _normalize_str(best.get('name'))
         maxspeed = _normalize_float(best.get('speed_kph'))
-        bus_speed = round(edge_bus_speed_kmh(road_class), 1)
+        bus_speed = round(edge_bus_speed_for_edge(best), 1)
 
         total_m += edge_len
         total_s += edge_time
@@ -182,8 +203,8 @@ def get_route_local(start_lat: float, start_lng: float,
             # geom is a shapely LineString; coords are (lng, lat)
             pts = [[lat, lng] for lng, lat in geom.coords]
         else:
-            u_node = g.nodes[u]
-            v_node = g.nodes[v]
+            u_node = g_directed.nodes[u]
+            v_node = g_directed.nodes[v]
             pts = [[u_node['y'], u_node['x']], [v_node['y'], v_node['x']]]
 
         # Stitch into the flat geometry for backward compat

@@ -19,22 +19,23 @@ CACHE_FILE = os.path.join(os.path.dirname(__file__), 'route_cache.json')
 GRAPHML_PATH = os.path.join(os.path.dirname(__file__), 'sg_osm', 'singapore_drive.graphml')
 MAX_CACHE_ENTRIES = 5000  # Limit cache size to prevent file from growing too large
 
-# Effective school-bus cruise speed (km/h) per OSM road class.
-# Calibrated for Singapore school-bus reality at ~6:30 AM:
-# - motorway / trunk: near maxspeed (free flow, no traffic yet)
-# - primary / secondary: moderate slow-down (signals, intersections)
-# - residential: heavy slow-down (narrow lanes, school zones, dwell)
-# These are used INSTEAD of OSM's `travel_time` (which assumes maxspeed everywhere).
+# Per-edge `maxspeed` from OSM is the primary source of base cruise speed
+# (94% of edges in singapore_drive.graphml have a maxspeed tag — the actual
+# signposted statutory limit). The table below is a CLASS-MEDIAN FALLBACK
+# for the ~6% of edges with no tag. Values are the median maxspeed observed
+# per OSM highway class in the graph itself. Slow-down for school-bus
+# reality (dwell, signals, school zones) is applied separately via the
+# runtime safety factor (set_safety_factor).
 SCHOOL_BUS_SPEED_KMH = {
-    'motorway': 72,         'motorway_link': 50,
-    'trunk': 60,            'trunk_link': 45,
-    'primary': 48,          'primary_link': 40,
-    'secondary': 38,        'secondary_link': 30,
-    'tertiary': 32,         'tertiary_link': 28,
-    'unclassified': 25,     'residential': 22,
-    'living_street': 15,    'service': 18,
+    'motorway': 90,         'motorway_link': 50,
+    'trunk': 60,            'trunk_link': 50,
+    'primary': 60,          'primary_link': 50,
+    'secondary': 50,        'secondary_link': 50,
+    'tertiary': 50,         'tertiary_link': 50,
+    'unclassified': 50,     'residential': 50,
+    'living_street': 50,    'service': 18,
 }
-SCHOOL_BUS_SPEED_DEFAULT_KMH = 25       # fallback for unknown / missing highway tag
+SCHOOL_BUS_SPEED_DEFAULT_KMH = 50       # SG urban default when both maxspeed and highway tag missing
 
 # Global safety factor applied uniformly to every road class.
 # 1.0 = no margin (raw cruise speed); lower = more conservative.
@@ -46,7 +47,7 @@ SCHOOL_BUS_SPEED_DEFAULT_KMH = 25       # fallback for unknown / missing highway
 # weights at factor=1.0 (computed via edge_base_bus_speed_kmh), and the
 # factor is applied at output (matrix scaling + per-edge display speed).
 SAFETY_FACTOR_DEFAULT = 0.85
-SAFETY_FACTOR_MIN = 0.5
+SAFETY_FACTOR_MIN = 0.1   # 10% of maxspeed — extreme but legal; below 0.1 is absurd
 SAFETY_FACTOR_MAX = 1.0
 _current_safety_factor = SAFETY_FACTOR_DEFAULT
 
@@ -59,10 +60,15 @@ def set_safety_factor(f) -> float:
     serial in practice."""
     global _current_safety_factor
     try:
-        f = float(f)
+        f_in = float(f)
     except (TypeError, ValueError):
-        f = SAFETY_FACTOR_DEFAULT
-    f = max(SAFETY_FACTOR_MIN, min(SAFETY_FACTOR_MAX, f))
+        print(f"[safety_factor] WARN: invalid input {f!r}, using default {SAFETY_FACTOR_DEFAULT}", flush=True)
+        _current_safety_factor = SAFETY_FACTOR_DEFAULT
+        return SAFETY_FACTOR_DEFAULT
+    f = max(SAFETY_FACTOR_MIN, min(SAFETY_FACTOR_MAX, f_in))
+    if f != f_in:
+        print(f"[safety_factor] WARN: input {f_in} clamped to {f} "
+              f"(allowed range {SAFETY_FACTOR_MIN}-{SAFETY_FACTOR_MAX})", flush=True)
     _current_safety_factor = f
     return f
 
@@ -72,9 +78,9 @@ def get_safety_factor() -> float:
 
 
 def edge_base_bus_speed_kmh(highway_tag) -> float:
-    """Raw school-bus cruise speed for an OSM edge — no safety factor.
-    Used when building cached edge weights (graph annotations, igraph
-    edge attributes) so the cache is factor-invariant."""
+    """Class-level fallback cruise speed (km/h) for an OSM road class —
+    no safety factor. Used when an edge has no `maxspeed` tag, or by the
+    road-types overlay which represents the class table itself."""
     if isinstance(highway_tag, list):
         highway_tag = highway_tag[0] if highway_tag else None
     if highway_tag is None:
@@ -83,10 +89,58 @@ def edge_base_bus_speed_kmh(highway_tag) -> float:
 
 
 def edge_bus_speed_kmh(highway_tag) -> float:
-    """Effective school-bus cruise speed (km/h) including the current
-    safety factor. Used for UI display (heatmap road_parts).
-    """
+    """Class-level effective cruise speed (km/h) including safety factor.
+    Used by the road-types overlay (class table view); per-edge solver/UI
+    display goes through edge_bus_speed_for_edge instead."""
     return edge_base_bus_speed_kmh(highway_tag) * _current_safety_factor
+
+
+def _parse_edge_maxspeed_kmh(edge_data) -> float:
+    """Extract a per-edge maxspeed in km/h from an OSM edge data dict.
+    Handles list-valued attrs (edge spans multiple ways), 'NN km/h',
+    'NN mph', and non-numeric tags ('signals', 'walk'). Returns None when
+    no usable maxspeed is present."""
+    v = edge_data.get('maxspeed')
+    if isinstance(v, list):
+        v = v[0] if v else None
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        pass
+    s = str(v).strip().lower()
+    if not s or s in ('none', 'signals', 'walk', 'variable'):
+        return None
+    is_mph = 'mph' in s
+    digits = ''
+    for ch in s:
+        if ch.isdigit() or ch == '.':
+            digits += ch
+        elif digits:
+            break
+    if not digits:
+        return None
+    try:
+        n = float(digits)
+    except ValueError:
+        return None
+    return n * 1.60934 if is_mph else n
+
+
+def edge_base_bus_speed_for_edge(edge_data) -> float:
+    """Per-edge base cruise speed (km/h) at factor=1.0. Prefers the OSM
+    `maxspeed` for that specific edge; falls back to the class-median in
+    SCHOOL_BUS_SPEED_KMH when the edge has no maxspeed tag."""
+    ms = _parse_edge_maxspeed_kmh(edge_data)
+    if ms is not None and ms > 0:
+        return ms
+    return edge_base_bus_speed_kmh(edge_data.get('highway'))
+
+
+def edge_bus_speed_for_edge(edge_data) -> float:
+    """Per-edge effective cruise speed (km/h) including safety factor."""
+    return edge_base_bus_speed_for_edge(edge_data) * _current_safety_factor
 
 
 _road_graph_state = {'ig': None, 'tree': None, 'node_ids': None}
@@ -126,8 +180,10 @@ def _get_road_graph():
             lengths.append(ln)
             # Per-edge time at base cruise speed (factor=1.0). The runtime
             # safety factor is applied as a scalar multiply on the final
-            # time matrix — this keeps the cache factor-invariant.
-            speed_kmh = edge_base_bus_speed_kmh(d.get('highway'))
+            # time matrix — this keeps the cache factor-invariant. Speed
+            # comes from the edge's own `maxspeed` tag, with class-median
+            # fallback when missing.
+            speed_kmh = edge_base_bus_speed_for_edge(d)
             bus_travel_times.append(ln * 3.6 / speed_kmh)
 
         g = ig.Graph(n=len(node_list), edges=edges, directed=True)
@@ -163,8 +219,9 @@ def build_distance_and_time_matrices_real(
     """Build (distance_m, time_s) matrices via Dijkstra on the real Singapore
     road graph.
 
-    - `bus_travel_time` weight: per-edge time at the SCHOOL_BUS_SPEED_KMH
-      table (motorway 72, residential 22, etc.) — used to find the
+    - `bus_travel_time` weight: per-edge time at base cruise speed —
+      OSM `maxspeed` for that edge when tagged (94% of edges), with
+      SCHOOL_BUS_SPEED_KMH class-median as fallback. Used to find the
       time-optimal path AND to report total time.
     - `length` weight: shortest physical distance (meters) reported separately.
     """
@@ -194,8 +251,8 @@ def build_distance_and_time_matrices_real(
     # cost). They may pick different paths for some pairs, but the solver
     # uses each matrix for its respective constraint (time / distance).
     for i in range(n):
-        time_all = g.distances(source=src_nodes[i], weights='bus_travel_time', mode='out')[0]
-        len_all = g.distances(source=src_nodes[i], weights='length', mode='out')[0]
+        time_all = g.distances(source=src_nodes[i], weights='bus_travel_time', mode='all')[0]
+        len_all = g.distances(source=src_nodes[i], weights='length', mode='all')[0]
         for j in range(n):
             t = time_all[src_nodes[j]]
             d = len_all[src_nodes[j]]
@@ -568,7 +625,7 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
     )
     routing = pywrapcp.RoutingModel(manager)
     
-    # Distance callback (open-ended: school→student cost = 0)
+    # Distance callback (open-ended: school->student cost = 0)
     def distance_callback(from_index, to_index):
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
@@ -620,12 +677,11 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
     
     time_callback_index = routing.RegisterTransitCallback(time_callback)
     
-    # Real road-network travel times feed the solver directly — the soft target
-    # equals the user's max ride time.
-    effective_max_ride_seconds = max_ride_time_minutes * 60
-
-    # STRICTER GLOBAL HARD CAP: No route can exceed the requested time + 15 mins buffer
-    global_hard_cap = int((max_ride_time_minutes + 15) * 60)
+    # Hard cap = user's max_ride_time exactly. The violation check at
+    # solve_cvrp:920 / enrich_routes_with_geometry:1037 compares against
+    # the same value, so any buffer here would silently allow rides the
+    # check then flags as violations.
+    global_hard_cap = int(max_ride_time_minutes * 60)
 
     routing.AddDimension(
         time_callback_index, slack_max=1800, capacity=global_hard_cap,
@@ -634,30 +690,10 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
 
     time_dimension = routing.GetDimensionOrDie('Time')
 
-    # --- DYNAMIC SOFT CAP PER NODE ---
-    for i, student in enumerate(students):
-        node_index = i + 1  # 0 is depot/school
-
-        direct_travel_time = time_matrix[node_index][0]
-        node_demand = demands[node_index] if demands else 1
-        service_time = advanced_params['service_time'] + (node_demand - 1) * 15 if node_demand > 0 else 0
-
-        min_possible_time = direct_travel_time + service_time
-        dynamic_soft_target = max(effective_max_ride_seconds, int(min_possible_time * 0.8) + 300)
-        
-    # MASSIVE PENALTY: 10,000 points per second over the target (was 150)
-    # This forces the solver to open a new bus (cost 5,000 - 20,000) rather than exceed the limit by even 2 seconds.
+    # Minimal span costs — let solver dispatch freely
+    time_dimension.SetGlobalSpanCostCoefficient(0)
     for vehicle_id in range(num_vehicles):
-        end_index = routing.End(vehicle_id)
-        time_dimension.SetCumulVarSoftUpperBound(end_index, effective_max_ride_seconds, 10000)
-
-    # RELAXED SPAN COST: Stop punishing the solver for total travel time
-    # This allows it to freely dispatch more buses without worrying about the total combined driving time
-    time_dimension.SetGlobalSpanCostCoefficient(10)
-
-    # RELAXED VEHICLE SPAN COST: Squeeze lightly, but prioritize the SoftUpperBound penalty
-    for vehicle_id in range(num_vehicles):
-        time_dimension.SetSpanCostCoefficientForVehicle(5, vehicle_id)
+        time_dimension.SetSpanCostCoefficientForVehicle(0, vehicle_id)
 
     # --- ADVANCED CONSTRAINTS ---
     solver = routing.solver()
@@ -679,9 +715,12 @@ def _build_cvrp_model(school: Dict, students: List[Dict], num_vehicles: int,
                 # Force siblings to be picked up consecutively (breaks symmetry and guarantees group pickup)
                 solver.Add(routing.NextVar(current_node) == next_node)
                 
-    # 2. Special Needs Constraint: Restrict ride time to 30 mins (1800s)
-    # Also apply safety factor to special needs limit
-    special_needs_max_time = 1800  # 30 minutes hard cap on real travel time
+    # 2. Special Needs Constraint: hard cap of 30 min on time_dimension.
+    # time_dimension already includes the safety factor (time_matrix is
+    # scaled by 1/factor in build_distance_and_time_matrices_real), so
+    # 1800s here is in conservative-speed seconds — same units the user's
+    # max_ride_time soft bound is compared against. No extra factor needed.
+    special_needs_max_time = 1800
     M = global_hard_cap * 2  # Big-M for implication
     
     for i, student in enumerate(students):
@@ -706,10 +745,11 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
                vehicle_capacities: List[int] = None,
                advanced_params: Dict = None) -> Dict:
     """
-    Two-Phase CVRP solver:
-      Phase 1 (5s): Quick solve with max vehicles → discover optimal bus count
-      Phase 2 (30s): Re-solve with exact bus count → better route quality
-    Uses fast Haversine estimates for the solver Phase to improve speed.
+    CVRP solver. Builds a real-road distance/time matrix via igraph Dijkstra
+    on the cached Singapore OSM graph (NOT haversine — the older comment
+    saying 'fast Haversine estimates' was a holdover from an early version).
+    Phase 2 polyline enrichment happens in enrich_routes_with_geometry,
+    which the app calls separately after this returns.
     """
     if not students:
         return {'routes': [], 'total_distance': 0, 'total_time': 0}
@@ -741,17 +781,24 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
 
     distance_matrix, time_matrix = build_distance_and_time_matrices_real(school, students)
 
-    # ===== SOLVE CVRP WITH FULL FLEET (35 seconds) =====
-    # Let OR-Tools use fixed costs to naturally minimize vehicles
-    # rather than artificially restricting the bus count.
-    print(f"\n--- Solving with up to {num_vehicles} vehicles (35s) ---")
-    
+    # Let the solver use all available vehicles. Low fixed cost (500)
+    # means it will naturally prefer adding a bus over violating 60 min,
+    # but won't waste vehicles unnecessarily.
+    n_students_actual = sum(demands)
+    min_buses = max(1, math.ceil(n_students_actual / 40))
+    print(f"Available: {num_vehicles} vehicles, {n_students_actual} students "
+          f"(min ~{min_buses} buses at 40/bus)")
+
+    # Time limit scales with unique locations: 45s-180s range
+    solver_time_limit = max(45, min(180, int(len(students) * 0.8)))
+    print(f"\n--- Solving with up to {num_vehicles} vehicles ({solver_time_limit}s) ---")
+
     manager, routing, capacities = _build_cvrp_model(
         school, students, num_vehicles, distance_matrix,
         max_ride_time_minutes, vehicle_capacities, time_matrix,
         advanced_params=advanced_params, demands=demands
     )
-    
+
     search_params = pywrapcp.DefaultRoutingSearchParameters()
     search_params.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.SAVINGS
@@ -759,7 +806,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
     search_params.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH
     )
-    search_params.time_limit.seconds = 35
+    search_params.time_limit.seconds = solver_time_limit
     
     solution = routing.SolveWithParameters(search_params)
     
@@ -835,7 +882,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
                 
                 # OPEN VRP: Only add segment if there IS a previous student.
                 if prev_student:
-                    segment_name = super_node['name'] if node_demand == 1 else f"{node_demand} pax at {super_node.get('address', 'this location')}"
+                    segment_name = super_node.get('name', super_node.get('Name', 'Student')) if node_demand == 1 else f"{node_demand} pax at {super_node.get('address', 'this location')}"
                     route_segments.append({
                         'from': {'lat': prev_student['latitude'], 'lng': prev_student['longitude']},
                         'to': {'lat': super_node['latitude'], 'lng': super_node['longitude']},
@@ -874,7 +921,7 @@ def solve_cvrp(school: Dict, students: List[Dict], num_vehicles: int, api_key: s
             
             if ride_duration > max_ride_time_minutes * 60:
                 time_violations.append({
-                    'student': student['name'],
+                    'student': student.get('name', student.get('Name', 'Unknown')),
                     'ride_minutes': round(ride_duration / 60, 1),
                     'bus': vehicle_id + 1
                 })
@@ -1273,7 +1320,7 @@ def recalculate_manually_adjusted_routes(routes: List[Dict], school: Dict, api_k
             segments.append({
                 'from': {'lat': s1['latitude'], 'lng': s1['longitude']},
                 'to': {'lat': s2['latitude'], 'lng': s2['longitude']},
-                'student': s2['name']
+                'student': s2.get('name', s2.get('Name', 'Unknown'))
             })
             
         # Add return to school segment
@@ -1349,8 +1396,105 @@ def recalculate_manually_adjusted_routes(routes: List[Dict], school: Dict, api_k
         new_route['departure_time'] = format_time(int(actual_departure_time))
         new_route['time_violations'] = time_violations
         new_route['max_ride_minutes'] = round(max_student_ride_time / 60, 1)
-        
+
         recalculated_routes.append(new_route)
-        
+
     save_cache_to_file()
     return recalculated_routes
+
+
+def recalculate_routes_for_verification(routes: List[Dict],
+                                        school: Dict,
+                                        school_arrival_time: int,
+                                        max_ride_time_minutes: int,
+                                        service_time: int = 60) -> List[Dict]:
+    """Fast variant of recalculate_manually_adjusted_routes for AI-Refine
+    verification. Skips per-segment polyline fetching (the slow part — 530+
+    NetworkX Dijkstras for 41 buses) by reading time/distance directly from
+    the same igraph-based matrix the solver uses. Suitable for hard-constraint
+    checks and delta computation. Polylines only matter when the user actually
+    applies a suggestion, so apply_suggestion still uses the full recalc."""
+    out = []
+    for route in routes:
+        students = route.get('students', [])
+        if not students:
+            continue
+
+        # 1. Build matrix (fast — igraph)
+        dist_m, time_s = build_distance_and_time_matrices_real(school, students)
+
+        # 2. 2-opt reorder using the distance matrix
+        route_indices = [0] + list(range(1, len(students) + 1)) + [0]
+        optimized_indices, _ = two_opt(route_indices, dist_m)
+        students = [students[i - 1] for i in optimized_indices[1:-1]]
+        new_route = route.copy()
+        new_route['students'] = students
+
+        # 3. Sum segment times/distances from matrix instead of polyline fetch.
+        # Sequence is: school(0) -> s1 -> s2 -> ... -> sn -> school(0).
+        # Solver convention: school -> first student segment is free for OVRP,
+        # which mirrors what recalculate_manually_adjusted_routes does (it
+        # uses i-1 indexing into segments starting at i>0, so the first
+        # student's pickup time = departure time + 0).
+        n = len(students)
+        seg_times = []   # times[i] = travel s[i] -> s[i+1] (or last -> school)
+        seg_dists = []
+        for i in range(n - 1):
+            mi = i + 1
+            mj = i + 2
+            seg_times.append(time_s[mi][mj])
+            seg_dists.append(dist_m[mi][mj])
+        # last student -> school
+        seg_times.append(time_s[n][0])
+        seg_dists.append(dist_m[n][0])
+
+        real_travel_time = sum(seg_times)
+        real_distance_m = sum(seg_dists)
+
+        # Dwell time mirrors recalculate_manually_adjusted_routes / solver
+        distinct_locs = {
+            (round(s['latitude'], 5), round(s['longitude'], 5)) for s in students
+        }
+        num_stops = len(distinct_locs)
+        total_dwell = num_stops * service_time + (len(students) - num_stops) * 15
+        real_time = real_travel_time + total_dwell
+
+        actual_departure_time = school_arrival_time - real_time
+        cumulative_real_time = 0
+        time_violations = []
+        max_student_ride_time = 0
+        prev_loc = None
+        for i, s_data in enumerate(students):
+            if i > 0:
+                cumulative_real_time += seg_times[i - 1]
+
+            cur_loc = (round(s_data['latitude'], 5), round(s_data['longitude'], 5))
+            actual_pickup_time = actual_departure_time + cumulative_real_time
+            ride_duration = school_arrival_time - actual_pickup_time
+
+            if cur_loc == prev_loc:
+                cumulative_real_time += 15
+            else:
+                cumulative_real_time += service_time
+
+            s_data['pickup_time'] = format_time(int(actual_pickup_time))
+            s_data['ride_duration_minutes'] = round(ride_duration / 60, 1)
+            max_student_ride_time = max(max_student_ride_time, ride_duration)
+
+            time_limit = 30 * 60 if s_data.get('special_needs') else max_ride_time_minutes * 60
+            if ride_duration > time_limit:
+                time_violations.append({
+                    'student': s_data.get('name', 'Unknown'),
+                    'ride_minutes': round(ride_duration / 60, 1),
+                })
+            prev_loc = cur_loc
+
+        new_route['time_minutes'] = round(real_time / 60, 1)
+        new_route['distance_km'] = round(real_distance_m / 1000, 2)
+        new_route['departure_time'] = format_time(int(actual_departure_time))
+        new_route['time_violations'] = time_violations
+        new_route['max_ride_minutes'] = round(max_student_ride_time / 60, 1)
+        out.append(new_route)
+
+    save_cache_to_file()
+    return out

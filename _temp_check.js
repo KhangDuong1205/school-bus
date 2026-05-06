@@ -41,7 +41,7 @@
     // Add keydown listener to inputs to trigger enter to confirm
     document.addEventListener('DOMContentLoaded', () => {
         if(typeof lucide !== 'undefined') lucide.createIcons();
-        const inputs = ['schoolTime', 'maxRideTime', 'serviceTime', 'avgSpeed'];
+        const inputs = ['schoolTime', 'maxRideTime', 'serviceTime', 'safetyFactor'];
         inputs.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -138,10 +138,7 @@
         const detailsSection = document.querySelector('.section-details'); // No longer exists in the DOM directly like this
         const savedRunsSection = document.getElementById('savedRunsSection');
         const handleSavedRuns = document.getElementById('resizeHandleSaved');
-        
-        const clusterSection = document.getElementById('clusterListSection');
-        const handleClusters = document.getElementById('resizeHandleClusters');
-        
+
         const controlPanel = document.getElementById('controlPanel');
         const horizontalHandle = document.getElementById('horizontalResizeHandle');
 
@@ -160,19 +157,6 @@
                 currentTarget = savedRunsSection;
                 startY = e.clientY;
                 startHeight = savedRunsSection.offsetHeight;
-                document.body.style.cursor = 'ns-resize';
-                document.body.style.userSelect = 'none';
-                e.preventDefault();
-            });
-        }
-
-        // Vertical resize for Cluster section
-        if (handleClusters) {
-            handleClusters.addEventListener('mousedown', (e) => {
-                isResizing = true;
-                currentTarget = clusterSection;
-                startY = e.clientY;
-                startHeight = clusterSection.offsetHeight;
                 document.body.style.cursor = 'ns-resize';
                 document.body.style.userSelect = 'none';
                 e.preventDefault();
@@ -210,10 +194,7 @@
                 // So dragging down means e.clientY is larger than startY, deltaY is positive, height should INCREASE.
                 
                 let deltaY = e.clientY - startY;
-                
-                // If it's the cluster section, its handle is also BELOW it.
-                // So deltaY is positive when dragging down.
-                
+
                 const newHeight = Math.max(100, Math.min(window.innerHeight * 0.8, startHeight + deltaY));
                 currentTarget.style.height = newHeight + 'px';
                 currentTarget.style.flex = `0 0 ${newHeight}px`; // Force flex basis to respect the height
@@ -274,7 +255,6 @@
     let markers = {};
     let schoolMarker = null;
     let routeLayers = {}; // Object to store route layers by index
-    let clusterCircles = [];
     let pickupMarkers = [];
     let students = []; // Global array to hold student data
     let animationMarkers = {}; // Stores animated bus markers
@@ -289,7 +269,9 @@
     // Simplified init
     document.addEventListener('DOMContentLoaded', () => {
         if(typeof lucide !== 'undefined') lucide.createIcons();
-        initMap();
+        initMap(); setTimeout(() => { if(typeof map !== "undefined" && map) map.invalidateSize(); 
+            console.log("Map invalidated, current center:", map.getCenter());
+        }, 500);
         loadStudents();
         loadSchool();
         loadFleetInfo();
@@ -335,8 +317,216 @@
             maxZoom: 19
         }).addTo(map);
 
+        buildRoadTypeControl();
+
         // Map events can be added here if needed
     }
+
+    // === ROAD-TYPES OVERLAY ====================================================
+    // Per-class style mirroring SCHOOL_BUS_SPEED_KMH in route_optimizer.py.
+    // hue: warm (red/orange/amber) = high tier, cool (cyan/blue/purple) = low tier
+    // dashed = `_link` slip road; dotted = unknown / fallback class.
+    const ROAD_STYLES = {
+        'motorway':       { color: '#b91c1c', weight: 5, dashArray: null,    speed: 72 },
+        'motorway_link':  { color: '#f87171', weight: 3, dashArray: '6,4',   speed: 50 },
+        'trunk':          { color: '#c2410c', weight: 4, dashArray: null,    speed: 60 },
+        'trunk_link':     { color: '#fb923c', weight: 3, dashArray: '6,4',   speed: 45 },
+        'primary':        { color: '#b45309', weight: 4, dashArray: null,    speed: 48 },
+        'primary_link':   { color: '#fbbf24', weight: 3, dashArray: '6,4',   speed: 40 },
+        'secondary':      { color: '#a16207', weight: 3, dashArray: null,    speed: 38 },
+        'secondary_link': { color: '#facc15', weight: 2, dashArray: '6,4',   speed: 30 },
+        'tertiary':       { color: '#4d7c0f', weight: 3, dashArray: null,    speed: 32 },
+        'tertiary_link':  { color: '#a3e635', weight: 2, dashArray: '6,4',   speed: 28 },
+        'unclassified':   { color: '#15803d', weight: 2, dashArray: null,    speed: 25 },
+        'residential':    { color: '#0891b2', weight: 2, dashArray: null,    speed: 22 },
+        'living_street':  { color: '#1e40af', weight: 2, dashArray: null,    speed: 15 },
+        'service':        { color: '#7c3aed', weight: 1, dashArray: null,    speed: 18 },
+    };
+    const ROAD_FALLBACK_STYLE = { color: '#94a3b8', weight: 1, dashArray: '2,4', speed: 25 };
+
+    let roadTypesData = null;
+    let roadTypeLayers = {};
+    let roadTypeLoading = false;
+    let roadTypeControl = null;
+
+    async function loadRoadTypesGeojson() {
+        if (roadTypesData) return roadTypesData;
+        if (roadTypeLoading) {
+            while (roadTypeLoading) await new Promise(r => setTimeout(r, 100));
+            return roadTypesData;
+        }
+        roadTypeLoading = true;
+        try {
+            const res = await fetch('/api/road-types-geojson');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            roadTypesData = await res.json();
+        } finally {
+            roadTypeLoading = false;
+        }
+        return roadTypesData;
+    }
+
+    function buildRoadTypeLayers(geojson) {
+        const byClass = {};
+        for (const feat of geojson.features) {
+            const cls = feat.properties.in_table ? feat.properties.highway : '__unknown__';
+            (byClass[cls] = byClass[cls] || []).push(feat);
+        }
+        for (const [cls, feats] of Object.entries(byClass)) {
+            const style = (cls === '__unknown__') ? ROAD_FALLBACK_STYLE : ROAD_STYLES[cls];
+            if (!style) continue; // shouldn't happen but be safe
+            const layerGroup = L.geoJSON(
+                { type: 'FeatureCollection', features: feats },
+                {
+                    style: () => ({
+                        color: style.color,
+                        weight: style.weight,
+                        opacity: 0.75,
+                        dashArray: style.dashArray,
+                    }),
+                    onEachFeature: (feature, layer) => {
+                        const p = feature.properties;
+                        const label = p.in_table ? p.highway : `${p.highway} (default)`;
+                        layer.bindTooltip(`${label} — ${p.speed_kmh} km/h`, { sticky: true });
+                    },
+                }
+            );
+            roadTypeLayers[cls] = layerGroup;
+        }
+    }
+
+    function toggleRoadTypeClass(cls, enabled) {
+        const group = roadTypeLayers[cls];
+        if (!group) return;
+        if (enabled) group.addTo(map);
+        else if (map.hasLayer(group)) map.removeLayer(group);
+    }
+
+    function buildRoadTypeControl() {
+        if (roadTypeControl) return;
+        const Ctl = L.Control.extend({
+            options: { position: 'topright' },
+            onAdd: function () {
+                const wrapper = L.DomUtil.create('div', 'road-types-ctl');
+                wrapper.style.cssText = 'position:relative;';
+
+                const btn = L.DomUtil.create('a', 'road-types-toggle-btn', wrapper);
+                btn.href = '#';
+                btn.title = 'Show OSM road types';
+                btn.innerHTML = '<i data-lucide="map" class="rt-icon"></i><span>Road types</span>';
+
+                // Panel floats absolutely below the button, anchored to the
+                // button's RIGHT edge so it expands LEFTward without shoving
+                // the button into the middle of a wide white box.
+                const panel = L.DomUtil.create('div', 'road-types-panel', wrapper);
+                panel.style.cssText = 'display:none;position:absolute;top:38px;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 12px rgba(15,23,42,0.10);padding:10px 12px;width:230px;max-height:65vh;overflow-y:auto;font-size:11px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+
+                const header = L.DomUtil.create('div', '', panel);
+                header.innerHTML = '<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:#0f172a;">OSM road tier <span style="color:#94a3b8;font-weight:400;">(km/h)</span></div>';
+
+                const allBtns = L.DomUtil.create('div', '', panel);
+                allBtns.style.cssText = 'display:flex;gap:4px;margin-bottom:6px;';
+                allBtns.innerHTML = `
+                    <button data-act="all" style="flex:1;padding:3px 4px;font-size:10px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer;font-weight:600;">All</button>
+                    <button data-act="none" style="flex:1;padding:3px 4px;font-size:10px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer;font-weight:600;">None</button>
+                `;
+
+                const list = L.DomUtil.create('div', '', panel);
+
+                const ALL_CLASSES = [
+                    'motorway','motorway_link','trunk','trunk_link',
+                    'primary','primary_link','secondary','secondary_link',
+                    'tertiary','tertiary_link','unclassified','residential',
+                    'living_street','service'
+                ];
+
+                function makeRow(cls, style, italic) {
+                    const row = L.DomUtil.create('label', '', list);
+                    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;';
+
+                    const cb = L.DomUtil.create('input', '', row);
+                    cb.type = 'checkbox';
+                    cb.checked = false;
+                    cb.dataset.cls = cls;
+                    cb.style.margin = '0';
+
+                    const swatch = L.DomUtil.create('span', '', row);
+                    const swatchH = Math.max(2, Math.min(5, style.weight)) + 'px';
+                    swatch.style.cssText = `width:22px;height:${swatchH};display:inline-block;flex-shrink:0;`;
+                    if (style.dashArray) {
+                        swatch.style.background = `repeating-linear-gradient(90deg, ${style.color}, ${style.color} 4px, transparent 4px, transparent 7px)`;
+                    } else {
+                        swatch.style.background = style.color;
+                    }
+
+                    const name = L.DomUtil.create('span', '', row);
+                    name.style.cssText = `flex:1;color:#334155;${italic ? 'font-style:italic;' : ''}`;
+                    name.textContent = cls === '__unknown__' ? 'unknown / fallback' : cls;
+
+                    const sp = L.DomUtil.create('span', '', row);
+                    sp.style.cssText = 'font-family:ui-monospace,monospace;color:#64748b;';
+                    sp.textContent = String(style.speed);
+
+                    cb.addEventListener('change', () => toggleRoadTypeClass(cls, cb.checked));
+                    return cb;
+                }
+
+                ALL_CLASSES.forEach(cls => makeRow(cls, ROAD_STYLES[cls], false));
+
+                // Divider + unknown fallback row
+                const divider = L.DomUtil.create('div', '', list);
+                divider.style.cssText = 'border-top:1px solid #e2e8f0;margin:4px 0 2px;';
+                makeRow('__unknown__', ROAD_FALLBACK_STYLE, true);
+
+                allBtns.querySelectorAll('button').forEach(b => {
+                    b.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const turnOn = b.dataset.act === 'all';
+                        panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                            if (cb.checked !== turnOn) {
+                                cb.checked = turnOn;
+                                toggleRoadTypeClass(cb.dataset.cls, turnOn);
+                            }
+                        });
+                    });
+                });
+
+                L.DomEvent.disableClickPropagation(wrapper);
+                L.DomEvent.disableScrollPropagation(wrapper);
+
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    if (panel.style.display === 'none') {
+                        panel.style.display = 'block';
+                        btn.classList.add('active');
+                        if (!roadTypesData) {
+                            const loadingMsg = L.DomUtil.create('div', '', panel);
+                            loadingMsg.style.cssText = 'padding:6px;color:#6366f1;font-size:11px;text-align:center;font-weight:600;';
+                            loadingMsg.textContent = 'Loading road network…';
+                            try {
+                                const data = await loadRoadTypesGeojson();
+                                buildRoadTypeLayers(data);
+                                loadingMsg.remove();
+                            } catch (err) {
+                                loadingMsg.textContent = 'Failed: ' + err.message;
+                                loadingMsg.style.color = '#dc2626';
+                            }
+                        }
+                    } else {
+                        panel.style.display = 'none';
+                        btn.classList.remove('active');
+                    }
+                });
+
+                return wrapper;
+            }
+        });
+        roadTypeControl = new Ctl();
+        roadTypeControl.addTo(map);
+        // Render the lucide icon now that the control DOM is in place.
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    // === END ROAD-TYPES OVERLAY ================================================
 
     // --- Bulk Assign Logic ---
     let pendingBulkAssignStudents = [];
@@ -453,8 +643,6 @@
         } catch (e) { console.error(e); }
     }
 
-    // Global storage for student cluster assignments
-    let studentClusterMap = {};  // Maps student name to cluster info
     let allStudentsData = [];    // Store all students for filtering
 
     function addStudentMarkers(students) {
@@ -476,11 +664,14 @@
             
             let badgeHtml = '';
             if (count > 1) {
-                badgeHtml = `<div style="position:absolute; top:-5px; right:-5px; background:#ef4444; color:white; border-radius:50%; width:16px; height:16px; font-size:10px; display:flex; align-items:center; justify-content:center; font-weight:bold; border:1px solid white; z-index:1000;">${count}</div>`;
+                badgeHtml = `<div style="position:absolute; top:-3px; right:-4px; background:#ef4444; color:white; border-radius:50%; min-width:14px; height:14px; padding:0 3px; font-size:9px; line-height:14px; text-align:center; font-weight:bold; border:1.5px solid white; z-index:2;">${count}</div>`;
             }
 
-            const iconHtml = `<div class="custom-student-icon" style="position:relative;">
-                <i class="fas fa-user-graduate"></i>
+            const iconHtml = `<div class="custom-student-icon">
+                <svg class="cs-pin-svg" width="24" height="32" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg">
+                    <path class="cs-pin-body" d="M12 1 C6.5 1 2 5.5 2 11 C2 17.5 12 30.5 12 30.5 C12 30.5 22 17.5 22 11 C22 5.5 17.5 1 12 1 Z" stroke="white" stroke-width="1.5"/>
+                    <circle cx="12" cy="11" r="3.5" fill="white"/>
+                </svg>
                 ${badgeHtml}
             </div>`;
 
@@ -488,9 +679,9 @@
                 icon: L.divIcon({
                     className: 'student-marker-container',
                     html: iconHtml,
-                    iconSize: [28, 28],
-                    iconAnchor: [14, 14],
-                    popupAnchor: [0, -14]
+                    iconSize: [24, 32],
+                    iconAnchor: [12, 30],
+                    popupAnchor: [0, -28]
                 })
             }).addTo(map);
 
@@ -533,297 +724,6 @@
         }
     }
 
-
-    // --- Cluster Analysis ---
-    // clusterCircles already declared globally above
-    const clusterColors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
-
-    // Helper: Calculate distance in meters between two lat/lng points
-    function getDistanceMeters(lat1, lng1, lat2, lng2) {
-        const R = 6371000; // Earth's radius in meters
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLng = (lng2 - lng1) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-    }
-
-    // --- Cluster Visualization State ---
-    let clusterLayers = {}; // Map of clusterId -> [layers]
-    let isolatedLayers = []; // List of isolated markers
-
-    // Display cluster list in sidebar
-    function displayClusterList(data) {
-        const section = document.getElementById('clusterListSection');
-        const content = document.getElementById('clusterListContent');
-        section.style.display = 'flex';
-
-        let html = `<div style="padding: 10px; font-size: 0.85rem;">
-            <div style="margin-bottom: 10px; font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
-                <span>${data.n_clusters} clusters • ${data.total_students} students</span>
-                <label style="font-size: 0.75rem; font-weight: 400; cursor: pointer;">
-                    <input type="checkbox" checked onchange="toggleAllClusters(this.checked)"> Show All
-                </label>
-            </div>`;
-
-        data.clusters.forEach((cluster, i) => {
-            const color = clusterColors[i % clusterColors.length];
-            const clusterId = i; // Use index as ID
-
-            html += `
-                <div style="margin-bottom: 12px; border-left: 4px solid ${color}; padding-left: 10px;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <div style="font-weight: 600; color: ${color}; cursor: pointer;" onclick="zoomToCluster(${clusterId})">
-                            Cluster ${i + 1} (${cluster.size} students)
-                        </div>
-                        <input type="checkbox" checked onchange="toggleClusterVisibility(${clusterId}, this.checked)" title="Toggle visibility">
-                    </div>
-                    <div style="font-size: 0.75rem; color: #64748b; margin-bottom: 4px;">
-                        ${cluster.distance_from_school} km from school
-                    </div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                        ${cluster.students.map(s =>
-                `<span style="background: ${color}20; color: ${color}; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem;">${s.name}</span>`
-            ).join('')}
-                    </div>
-                </div>`;
-        });
-
-        // Isolated students
-        if (data.isolated_students && data.isolated_students.length > 0) {
-            html += `
-                <div style="margin-bottom: 12px; border-left: 4px solid #f59e0b; padding-left: 10px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <div style="font-weight: 600; color: #f59e0b;">
-                            ⚠️ Isolated (${data.isolated_students.length})
-                        </div>
-                        <input type="checkbox" checked onchange="toggleIsolatedVisibility(this.checked)">
-                    </div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                        ${data.isolated_students.map(s =>
-                `<span style="background: #fef3c7; color: #b45309; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem;">${s.name}</span>`
-            ).join('')}
-                    </div>
-                </div>`;
-        }
-
-        html += '</div>';
-        content.innerHTML = html;
-
-        // Populate studentClusterMap for status display in students table
-        studentClusterMap = {};  // Reset
-        data.clusters.forEach((cluster, i) => {
-            cluster.students.forEach(s => {
-                studentClusterMap[s.name] = { clusterId: i, clusterSize: cluster.size };
-            });
-        });
-
-        // Mark isolated students with special cluster ID -1
-        data.isolated_students.forEach(s => {
-            studentClusterMap[s.name] = { clusterId: -1, isolated: true };
-        });
-
-        // Students are now managed on a separate page
-    }
-
-    // Toggle visibility for a specific cluster
-    function toggleClusterVisibility(clusterId, isVisible) {
-        const layers = clusterLayers[clusterId];
-        if (layers) {
-            layers.forEach(layer => {
-                if (isVisible) layer.addTo(map);
-                else map.removeLayer(layer);
-            });
-        }
-    }
-
-    // Toggle visibility for isolated students
-    function toggleIsolatedVisibility(isVisible) {
-        isolatedLayers.forEach(layer => {
-            if (isVisible) layer.addTo(map);
-            else map.removeLayer(layer);
-        });
-    }
-
-    // Toggle all
-    function toggleAllClusters(isVisible) {
-        // Toggle checkboxes
-        const checkboxes = document.querySelectorAll('#clusterListContent input[type="checkbox"]');
-        checkboxes.forEach(cb => {
-            cb.checked = isVisible;
-            // Trigger change event logic manually if needed, or just update map directly
-        });
-
-        // Update map
-        Object.keys(clusterLayers).forEach(id => toggleClusterVisibility(id, isVisible));
-        toggleIsolatedVisibility(isVisible);
-    }
-
-    // Zoom to cluster
-    function zoomToCluster(clusterId) {
-        const layers = clusterLayers[clusterId];
-        if (layers && layers.length > 0) {
-            // Find the circle layer (usually the first one or type L.Circle)
-            const circle = layers.find(l => l instanceof L.Circle);
-            if (circle) {
-                map.fitBounds(circle.getBounds());
-            } else {
-                // Should replace with actual group bounds
-                const group = L.featureGroup(layers);
-                map.fitBounds(group.getBounds());
-            }
-        }
-    }
-
-    // Clear cluster visualization
-    function clearClusters() {
-        // Remove all layers
-        Object.values(clusterLayers).forEach(layers => layers.forEach(l => map.removeLayer(l)));
-        clusterLayers = {};
-
-        isolatedLayers.forEach(l => map.removeLayer(l));
-        isolatedLayers = [];
-
-        document.getElementById('clusterListSection').style.display = 'none';
-        // resize handle removed
-        document.getElementById('clusterInfoDisplay').style.display = 'none';
-
-        // Reset cluster assignments
-        studentClusterMap = {};
-    }
-
-    async function analyzeClusters() {
-        const btn = document.querySelector('button[onclick="analyzeClusters()"]');
-        const infoDisplay = document.getElementById('clusterInfoDisplay');
-        const infoContent = document.getElementById('clusterInfoContent');
-
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyzing...';
-        btn.disabled = true;
-
-        // Clear previous clusters
-        clearClusters();
-
-        try {
-            const res = await fetch('/api/analyze-clusters', { method: 'POST' });
-            const data = await res.json();
-
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-
-            // Draw clusters on map
-            data.clusters.forEach((cluster, i) => {
-                const color = clusterColors[i % clusterColors.length];
-
-                // Track layers for this cluster
-                const layers = [];
-
-                if (cluster.students && cluster.students.length >= 3) {
-                    // Create Turf.js FeatureCollection from student coordinates
-                    const points = turf.featureCollection(
-                        cluster.students.map(s => turf.point([s.lng, s.lat]))
-                    );
-                    
-                    // Generate Convex Hull
-                    const hull = turf.convex(points);
-                    
-                    if (hull) {
-                        // Leaflet uses [lat, lng], Turf uses [lng, lat]
-                        const latLngs = hull.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
-                        
-                        const polygon = L.polygon(latLngs, {
-                            color: color,
-                            fillColor: color,
-                            fillOpacity: 0.15,
-                            weight: 2,
-                            dashArray: '5, 5'
-                        }).addTo(map);
-                        layers.push(polygon);
-                    }
-                } else if (cluster.students && cluster.students.length > 0) {
-                    // Fallback to circle if 1 or 2 students (convex hull needs 3 points)
-                    let maxDist = 0;
-                    cluster.students.forEach(s => {
-                        const d = getDistanceMeters(cluster.center.lat, cluster.center.lng, s.lat, s.lng);
-                        if (d > maxDist) maxDist = d;
-                    });
-                    const radius = Math.max(100, (maxDist * 1.2) + 50); // Minimum 100m radius
-
-                    const circle = L.circle([cluster.center.lat, cluster.center.lng], {
-                        color: color,
-                        fillColor: color,
-                        fillOpacity: 0.15,
-                        radius: radius,
-                        weight: 2,
-                        dashArray: '5, 5'
-                    }).addTo(map);
-                    layers.push(circle);
-                }
-
-                const label = L.marker([cluster.center.lat, cluster.center.lng], {
-                    icon: L.divIcon({
-                        className: 'cluster-label',
-                        html: `<div style="background:white; color:${color}; padding:2px 6px; border-radius:12px; border:1px solid ${color}; font-weight:bold; font-size:10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position:relative; z-index:400;">C${i + 1} (${cluster.students ? cluster.students.length : cluster.size})</div>`,
-                        iconSize: [80, 20],
-                        iconAnchor: [40, 10]
-                    })
-                }).addTo(map);
-                layers.push(label);
-
-                // Students in this cluster
-                cluster.students.forEach(s => {
-                    const marker = L.circleMarker([s.lat, s.lng], {
-                        radius: 5,
-                        fillColor: color,
-                        color: '#fff',
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.9
-                    }).addTo(map);
-                    marker.bindPopup(`<b>${s.name}</b><br>Cluster ${i + 1}`);
-                    layers.push(marker);
-                });
-
-                clusterLayers[i] = layers;
-            });
-
-            // Mark isolated students
-            data.isolated_students.forEach(s => {
-                const marker = L.circleMarker([s.lat, s.lng], {
-                    radius: 5,
-                    fillColor: '#f59e0b',
-                    color: '#fff',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.9
-                }).addTo(map);
-                marker.bindPopup(`<b>${s.name}</b><br>Isolated`);
-                isolatedLayers.push(marker);
-            });
-
-            // Show cluster list
-            displayClusterList(data);
-
-            // Update stats panel
-            infoDisplay.style.display = 'block';
-            infoContent.innerHTML = `
-                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                    <span>Found <strong>${data.n_clusters}</strong> clusters</span>
-                    <span>${data.isolated_students.length} isolated</span>
-                </div>
-            `;
-
-        } catch (e) {
-            console.error(e);
-            alert('Error analyzing clusters');
-        } finally {
-            btn.innerHTML = '<i class="fas fa-chart-pie"></i> Analyze Clusters';
-            btn.disabled = false;
-        }
-    }
 
     // --- Export Logic ---
     let cachedExportData = null;
@@ -1042,78 +942,50 @@
         });
     }
 
-    async function fetchAllRealRoutes() {
-        if (!optimizedRoutesData || !optimizedRoutesData.routes) return;
-        
-        const btn = document.getElementById('fetchAllRoutesBtn');
-        if (btn) {
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
-            btn.disabled = true;
-        }
-
-        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
-        
-        for (let i = 0; i < optimizedRoutesData.routes.length; i++) {
-            const fetchBtn = document.getElementById(`fetchBtn-${i}`);
-            // Only fetch if it hasn't been fetched yet (button is still visible)
-            if (fetchBtn && fetchBtn.style.display !== 'none') {
-                const color = colors[i % colors.length];
-                await fetchAndDrawRoute(i, color, true); // pass true for silent mode if needed, but sequential is fine
-            }
-        }
-        
-        if (btn) {
-            btn.innerHTML = '<i class="fas fa-check"></i> All Fetched';
-            setTimeout(() => {
-                btn.innerHTML = '<i class="fas fa-route"></i> Fetch All Real Routes';
-                btn.disabled = false;
-            }, 3000);
-        }
-    }
-
-    async function fetchAndDrawRoute(index, color, skipEventStop = false) {
+    async function fetchAndDrawRoute(index, color, skipEventStop = false, session = null) {
         if (!skipEventStop && window.event) window.event.stopPropagation();
-        
+
         const route = optimizedRoutesData && optimizedRoutesData.routes ? optimizedRoutesData.routes[index] : null;
         if (!route) return;
 
-        const btnIcon = document.getElementById(`fetchBtn-${index}`).querySelector('i');
-        btnIcon.className = 'fas fa-spinner fa-spin';
-        
+        const isBackground = session !== null;
+
         try {
             const response = await fetch('/api/fetch-geometry', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     route: route,
                     school_time: document.getElementById('schoolTime').value,
-                    max_ride_time: document.getElementById('maxRideTime').value
+                    max_ride_time: document.getElementById('maxRideTime').value,
+                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
             const result = await response.json();
-            
+
+            // If a newer optimize session has started, drop this stale result
+            if (session !== null && currentSolveSession !== session) return;
+
             if (result.error) {
-                alert('Error fetching route: ' + result.error);
-                btnIcon.className = 'fas fa-route';
+                if (!isBackground) alert('Error fetching route: ' + result.error);
+                else console.warn('Background fetch failed for route', index, '—', result.error);
                 return;
             }
 
-            const oldTime = route.time_minutes;
             const updatedRoute = result.route;
             // Update the stored data with the new route
             optimizedRoutesData.routes[index] = updatedRoute;
             sessionStorage.setItem('latestRoutes', JSON.stringify(optimizedRoutesData.routes));
             sessionStorage.setItem('optimizedRoutesFullData', JSON.stringify(optimizedRoutesData));
             
-            // Update the stats display to show both times distinctly
+            // Update the stats display — show only the real time (orange) + real distance.
+            // Estimated/Real comparison block is preserved in the route detail modal.
             const statsDiv = document.getElementById(`route-stats-${index}`);
             if (statsDiv) {
-                const hasViolations = updatedRoute.time_violations && updatedRoute.time_violations.length > 0;
-                statsDiv.style.color = hasViolations ? '#ef4444' : '#3b82f6';
+                statsDiv.style.color = '';
                 statsDiv.innerHTML = `
-                    <span style="text-decoration:line-through; opacity:0.5; font-size:0.75rem;" title="Haversine Estimate">${Math.round(oldTime)}m</span> 
-                    <span style="color:#f59e0b; font-weight:700;" title="Real Travel Time">${Math.round(updatedRoute.time_minutes)} min</span> 
-                    <span style="color:#64748b; font-size:0.8rem; margin-left:4px;">• ${updatedRoute.distance_km.toFixed(1)} km</span>
+                    <span class="mono text-amber-600 font-bold" title="Real road time">${Math.round(updatedRoute.time_minutes)}</span><span class="text-slate-400 ml-1">min</span><span class="text-slate-300 mx-2">|</span><span class="mono">${updatedRoute.distance_km.toFixed(1)}</span><span class="text-slate-400 ml-1">km</span>
                 `;
             }
             
@@ -1160,17 +1032,32 @@
                 const layerGroup = L.layerGroup([outline, line]);
                 routeLayers[index] = layerGroup;
                 layerGroup.addTo(map);
+
+                // Click on route line → scroll to corresponding bus in results
+                const ri = index;
+                [line, outline].forEach(l => {
+                    l.on('click', () => scrollToBusAccordion(ri));
+                    l.setStyle({ interactive: true });
+                });
                 
-                map.fitBounds(line.getBounds(), { padding: [20, 20] });
-                
-                // Hide the fetch button since it's fetched
-                document.getElementById(`fetchBtn-${index}`).style.display = 'none';
-                document.getElementById(`eyeBtn-${index}`).className = 'fas fa-eye';
-                document.getElementById(`eyeBtn-${index}`).parentElement.style.color = '#3b82f6';
+                // Don't fitBounds during background batch — would jerk the map for each completion
+                if (!isBackground) {
+                    map.fitBounds(line.getBounds(), { padding: [20, 20] });
+                }
+            }
+
+            // If route detail modal is open showing this route, refresh it
+            if (typeof rdpState !== 'undefined' && rdpState.openIndex === index) {
+                renderRouteDetailModal(index);
+                initRdpMiniMap(index);
             }
         } catch (err) {
-            alert('Failed to fetch route geometry');
-            btnIcon.className = 'fas fa-route';
+            if (!isBackground) {
+                console.error('Fetch geometry failed:', err);
+                alert('Failed to fetch route geometry: ' + err.message);
+            } else {
+                console.warn('Background fetch error for route', index, err);
+            }
         }
     }
 
@@ -1225,30 +1112,33 @@
         // to prevent UI desyncs when the Python server restarts.
     }
 
+    let currentSolveSession = 0;
+
     async function optimiseRoutes() {
         const btn = document.querySelector('button[onclick="optimiseRoutes()"]');
         const statusDiv = document.getElementById('optimisationResult');
+        const session = ++currentSolveSession;
 
-        // Disable button and show loading state
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Optimizing...';
+        // Hide any leftover fetch chip from a previous run
+        document.getElementById('fetchProgressChip').style.display = 'none';
+
+        // Phase 1 — Solving (button disabled, shows elapsed seconds)
         btn.disabled = true;
         btn.style.background = '#f59e0b';
         btn.style.animation = 'pulse 1.5s infinite';
 
-        // Show progress updates
-        statusDiv.innerHTML = '<span style="color:#f59e0b;">⏳ Step 1/3: Preparing distance and time matrices...</span>';
+        const solveStart = Date.now();
+        const setSolvingText = () => {
+            const elapsed = Math.floor((Date.now() - solveStart) / 1000);
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Solving routes... <span class="mono">${elapsed}s</span>`;
+        };
+        setSolvingText();
+        statusDiv.innerHTML = '<span style="color:#f59e0b;">⏳ Step 1/2 · Running OR-Tools optimiser</span>';
 
-        // Fake progress updates (since we can't get real progress from backend)
-        const progressSteps = [
-            { delay: 3000, text: '⏳ Step 2/3: Running Vehicle Routing optimization...' },
-            { delay: 8000, text: '⏳ Step 3/3: Fetching real road geometry from OneMap...' }
-        ];
-
-        const timeouts = progressSteps.map(step =>
-            setTimeout(() => {
-                statusDiv.innerHTML = `<span style="color:#f59e0b;">${step.text}</span>`;
-            }, step.delay)
-        );
+        const elapsedTimer = setInterval(() => {
+            if (currentSolveSession !== session) return;
+            setSolvingText();
+        }, 1000);
 
         try {
             const res = await fetch('/api/optimise-routes', {
@@ -1258,12 +1148,13 @@
                     school_time: document.getElementById('schoolTime').value,
                     max_ride_time: document.getElementById('maxRideTime').value,
                     service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60,
-                    avg_speed: document.getElementById('avgSpeed') ? document.getElementById('avgSpeed').value : 50
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
 
-            // Clear progress timeouts
-            timeouts.forEach(t => clearTimeout(t));
+            clearInterval(elapsedTimer);
+            // Drop result if a newer solve has started
+            if (currentSolveSession !== session) return;
 
             const result = await res.json();
             if (result.error) {
@@ -1277,61 +1168,91 @@
             // Show solver parameters in results header
             const solverParamsDisplay = document.getElementById('solverParamsDisplay');
             if (solverParamsDisplay) {
-                const avgSpeed = document.getElementById('avgSpeed') ? document.getElementById('avgSpeed').value : 50;
                 const serviceTime = document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60;
                 const maxRideTime = document.getElementById('maxRideTime') ? document.getElementById('maxRideTime').value : 60;
-                solverParamsDisplay.innerHTML = `<i class="fas fa-cog"></i> Solving: <b>${avgSpeed}km/h</b>, <b>${serviceTime}s</b>/pax, <b>${maxRideTime}min</b> limit`;
+                const safety = document.getElementById('safetyFactor')?.value || 0.85;
+                solverParamsDisplay.innerHTML = `<i class="fas fa-cog"></i> Solving: <b>${serviceTime}s</b>/pax, <b>${maxRideTime}min</b> limit, safety <b>${Number(safety).toFixed(2)}</b>`;
             }
             
-            statusDiv.innerHTML = `<span style="color:#10b981;">✅ Optimised! ${result.total_buses} bus(es), ${result.max_route_time_minutes || '?'} min max route</span>`;
+            // Stash final summary for runBackgroundFetch to display once Phase 2 completes.
+            statusDiv.dataset.finalSummary =
+                `✅ Optimised! ${result.total_buses} bus(es), ${result.max_route_time_minutes || '?'} min max route`;
 
-            // TWO-STATE WORKFLOW: Switch to Results Mode
-            const setupContainer = document.getElementById('setupContainer');
-            const resultsHeader = document.getElementById('resultsHeader');
-            if (setupContainer && resultsHeader) {
-                setupContainer.style.display = 'none';
-                resultsHeader.style.display = 'block';
-                
-                const schoolTime = document.getElementById('schoolTime').value;
-                const maxRideTime = document.getElementById('maxRideTime').value;
-                const serviceTime = document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60;
-                
-                document.getElementById('resultsSummaryText').innerHTML = `
-                    <span><strong>Target:</strong> ${schoolTime}</span>
-                    <span><strong>Limit:</strong> ${maxRideTime}m</span>
-                    <span><strong>Service:</strong> ${serviceTime}s/pax</span>
-                    <span><strong>Result:</strong> ${result.total_buses} Buses</span>
-                `;
-            }
-
-            // Auto-switch to Results tab (legacy behavior, but we keep it just in case)
-            // switchTab('results');
+            // Phase 2 — kick off background fetch of real geometry (non-blocking).
+            // runBackgroundFetch updates statusDiv to "Step 2/2 · Refining (k/N)" then
+            // swaps in the final summary above when all routes finish.
+            runBackgroundFetch(session);
 
         } catch (e) {
+            clearInterval(elapsedTimer);
+            if (currentSolveSession !== session) return;
             console.error(e);
             const msg = e.message || e.toString();
             statusDiv.innerHTML = `<span style="color:#ef4444;">❌ Optimization failed: ${msg}</span>`;
             alert(`Optimization failed:\n${msg}\nCheck console for details.`);
         } finally {
-            btn.innerHTML = '<i class="fas fa-magic"></i> Confirm & Optimise';
-            btn.disabled = false;
-            btn.style.background = '';
-            btn.style.animation = '';
+            clearInterval(elapsedTimer);
+            // Only reset button styling if this session is still current.
+            // (A newer solve will set its own state.)
+            if (currentSolveSession === session) {
+                btn.innerHTML = '<i class="fas fa-magic"></i> Re-Optimize';
+                btn.disabled = false;
+                btn.style.background = '';
+                btn.style.animation = '';
+            }
         }
+    }
+
+    async function runBackgroundFetch(session) {
+        if (!optimizedRoutesData || !optimizedRoutesData.routes) return;
+        const total = optimizedRoutesData.routes.length;
+        if (total === 0) return;
+
+        const statusDiv = document.getElementById('optimisationResult');
+        const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+        let done = 0;
+
+        const renderProgress = () => {
+            if (currentSolveSession !== session) return;
+            statusDiv.innerHTML =
+                `<span style="color:#f59e0b;">⏳ Step 2/2 · Refining real roads ` +
+                `<span class="mono">${done}/${total}</span></span>`;
+        };
+        renderProgress();
+
+        const tasks = [];
+        for (let i = 0; i < total; i++) {
+            tasks.push((async (idx) => {
+                try {
+                    await fetchAndDrawRoute(idx, colors[idx % colors.length], true, session);
+                } catch (_) { /* swallow per-route errors, surface via console inside fn */ }
+                if (currentSolveSession !== session) return;
+                done++;
+                renderProgress();
+            })(i));
+        }
+
+        await Promise.allSettled(tasks);
+
+        if (currentSolveSession !== session) return;
+
+        // Final summary — set on statusDiv by the caller before invoking us.
+        const finalText = statusDiv.dataset.finalSummary
+            || `All ${total} route(s) refined with real road data`;
+        statusDiv.innerHTML = `<span style="color:#10b981;">${finalText}</span>`;
+        delete statusDiv.dataset.finalSummary;
     }
 
     function resetToSetup() {
         const setupContainer = document.getElementById('setupContainer');
-        const resultsHeader = document.getElementById('resultsHeader');
         const container = document.getElementById('busListsContainer');
         const exportBtn = document.getElementById('exportCsvBtn');
         const saveRunBtn = document.getElementById('saveRunBtn');
         const actionBar = document.getElementById('floatingActionBar');
         const statusDiv = document.getElementById('optimisationResult');
-        
-        if (setupContainer && resultsHeader) {
+
+        if (setupContainer) {
             setupContainer.style.display = 'block';
-            resultsHeader.style.display = 'none';
         }
         
         // Hide floating action bar
@@ -1485,6 +1406,33 @@
         }, 300);
     }
 
+    function scrollToBusAccordion(routeIndex) {
+        const accordion = document.getElementById(`route-accordion-${routeIndex}`);
+        if (!accordion) return;
+
+        if (accordion.classList.contains('collapsed')) {
+            accordion.classList.remove('collapsed');
+        }
+
+        const container = document.getElementById('routeDetailsContent');
+        if (container) {
+            const containerRect = container.getBoundingClientRect();
+            const accRect = accordion.getBoundingClientRect();
+            if (accRect.top < containerRect.top || accRect.bottom > containerRect.bottom) {
+                const scrollPos = container.scrollTop + (accRect.top - containerRect.top) - (containerRect.height / 2) + (accRect.height / 2);
+                container.scrollTo({ top: scrollPos, behavior: 'smooth' });
+            }
+        } else {
+            accordion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        accordion.style.transition = 'background-color 0.3s ease';
+        accordion.style.backgroundColor = '#dbeafe';
+        setTimeout(() => {
+            accordion.style.backgroundColor = '';
+        }, 1200);
+    }
+
     function highlightStudentOnMap(lat, lng, studentIdentifier) {
         // Fly to the location smoothly
         map.flyTo([lat, lng], 17, {
@@ -1528,9 +1476,147 @@
         }
     }
 
+    // ---------------- Route Filters & Sort ----------------
+    let currentSort = 'utilization-asc';
+    let routeFilters = {
+        violations: false,
+        underused: false,
+        overcrowded: false,
+        longride: false,
+        sizes: new Set(),     // 'small' | 'medium' | 'large'
+        rides: new Set(),     // 'short' | 'medium' | 'long'
+        search: ''
+    };
+
+    function getSortedRouteIndices(routes) {
+        const indices = routes.map((_, i) => i);
+        if (currentSort === 'bus-number') return indices;
+        const valueOf = (i) => {
+            const r = routes[i];
+            const cap = Math.max(1, r.vehicle_capacity || 40);
+            const load = (r.students || []).length;
+            switch (currentSort) {
+                case 'utilization-asc': return load / cap;
+                case 'ride-time-desc': return -(r.time_minutes || 0);
+                case 'distance-desc': return -(r.distance_km || r.total_distance_km || 0);
+                case 'students-desc': return -load;
+                default: return 0;
+            }
+        };
+        return indices.sort((a, b) => valueOf(a) - valueOf(b));
+    }
+
+    function routeSizeBucket(cap) {
+        if (cap < 20) return 'small';
+        if (cap < 30) return 'medium';
+        return 'large';
+    }
+
+    function routeRideBucket(timeMin) {
+        if (timeMin < 20) return 'short';
+        if (timeMin < 40) return 'medium';
+        return 'long';
+    }
+
+    function routeMatchesFilter(route) {
+        const cap = route.vehicle_capacity || 40;
+        const load = (route.students || []).length;
+        const util = cap > 0 ? load / cap : 0;
+        const longestRide = (route.students || []).reduce((m, s) => Math.max(m, s.ride_duration_minutes || 0), 0);
+
+        if (routeFilters.violations && (!route.time_violations || route.time_violations.length === 0)) return false;
+        if (routeFilters.underused && util >= 0.5) return false;
+        if (routeFilters.overcrowded && load <= cap) return false;
+        if (routeFilters.longride && longestRide <= 40) return false;
+
+        if (routeFilters.sizes.size > 0) {
+            if (!routeFilters.sizes.has(routeSizeBucket(cap))) return false;
+        }
+        if (routeFilters.rides.size > 0) {
+            if (!routeFilters.rides.has(routeRideBucket(route.time_minutes || 0))) return false;
+        }
+
+        const q = (routeFilters.search || '').toLowerCase().trim();
+        if (q) {
+            const hasMatch = (route.students || []).some(s =>
+                (s.name || '').toLowerCase().includes(q) ||
+                (s.address || '').toLowerCase().includes(q)
+            );
+            if (!hasMatch) return false;
+        }
+
+        return true;
+    }
+
+    function applyRouteFilters() {
+        if (!optimizedRoutesData || !optimizedRoutesData.routes) return;
+        let visibleCount = 0;
+        document.querySelectorAll('[data-route-index]').forEach(lane => {
+            const idx = parseInt(lane.dataset.routeIndex);
+            if (isNaN(idx)) return;
+            const route = optimizedRoutesData.routes[idx];
+            if (!route) return;
+            const ok = routeMatchesFilter(route);
+            lane.style.display = ok ? '' : 'none';
+            if (ok) visibleCount++;
+        });
+        // If filters hide everything, surface a hint in the result line
+        const statusEl = document.getElementById('optimisationResult');
+        if (statusEl && visibleCount === 0 && hasAnyFilterActive()) {
+            statusEl.dataset._filteredEmpty = '1';
+            statusEl.innerHTML = '<span style="color:#64748b;">No routes match the current filters.</span>';
+        } else if (statusEl && statusEl.dataset._filteredEmpty === '1') {
+            delete statusEl.dataset._filteredEmpty;
+            statusEl.innerText = `Generated ${optimizedRoutesData.routes.length} routes covering ${optimizedRoutesData.total_students || ''} students.`;
+        }
+    }
+
+    function hasAnyFilterActive() {
+        return routeFilters.violations || routeFilters.underused || routeFilters.overcrowded ||
+               routeFilters.longride || routeFilters.sizes.size > 0 || routeFilters.rides.size > 0 ||
+               (routeFilters.search && routeFilters.search.trim().length > 0);
+    }
+
+    function toggleStatusFilter(key) {
+        routeFilters[key] = !routeFilters[key];
+        const btn = document.querySelector(`[data-filter-key="${key}"]`);
+        if (btn) btn.classList.toggle('active', routeFilters[key]);
+        applyRouteFilters();
+    }
+
+    function toggleSizeFilter(size) {
+        if (routeFilters.sizes.has(size)) routeFilters.sizes.delete(size);
+        else routeFilters.sizes.add(size);
+        const btn = document.querySelector(`[data-size="${size}"]`);
+        if (btn) btn.classList.toggle('active', routeFilters.sizes.has(size));
+        applyRouteFilters();
+    }
+
+    function toggleRideFilter(bucket) {
+        if (routeFilters.rides.has(bucket)) routeFilters.rides.delete(bucket);
+        else routeFilters.rides.add(bucket);
+        const btn = document.querySelector(`[data-ride="${bucket}"]`);
+        if (btn) btn.classList.toggle('active', routeFilters.rides.has(bucket));
+        applyRouteFilters();
+    }
+
+    let _filterSearchDebounce = null;
+    function setSearchFilter(value) {
+        if (_filterSearchDebounce) clearTimeout(_filterSearchDebounce);
+        _filterSearchDebounce = setTimeout(() => {
+            routeFilters.search = value;
+            applyRouteFilters();
+        }, 150);
+    }
+
+    function setSort(value) {
+        currentSort = value;
+        if (optimizedRoutesData) displayRoutes(optimizedRoutesData);
+    }
+
     function displayRoutes(data) {
         optimizedRoutesData = data;
-        currentRoutes = data.routes; 
+        currentRoutes = data.routes;
         sessionStorage.setItem('latestRoutes', JSON.stringify(data.routes));
         sessionStorage.setItem('optimizedRoutesFullData', JSON.stringify(data));
         
@@ -1560,7 +1646,9 @@
         
         const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
         
-        data.routes.forEach((route, i) => {
+        const sortedRouteIndices = getSortedRouteIndices(data.routes);
+        sortedRouteIndices.forEach(i => {
+            const route = data.routes[i];
             const color = colors[i % colors.length];
             const hasRouteViolations = route.time_violations && route.time_violations.length > 0;
             const lineColor = hasRouteViolations ? '#ef4444' : color; 
@@ -1588,7 +1676,14 @@
                 const layerGroup = L.layerGroup([outline, line]);
                 routeLayers[i] = layerGroup;
                 layerGroup.addTo(map);
-                
+
+                // Click on route line → scroll to corresponding bus in results
+                const ri = i;
+                [line, outline].forEach(l => {
+                    l.on('click', () => scrollToBusAccordion(ri));
+                    l.setStyle({ interactive: true });
+                });
+
                 if (i === 0) map.fitBounds(line.getBounds(), { padding: [20, 20] });
             }
 
@@ -1600,16 +1695,14 @@
             if (route.vehicle_plate && route.vehicle_plate !== 'Pending') busLabel = route.vehicle_plate;
             
             let statsHtml = `<span class="mono">${Math.round(durMin)}</span><span class="text-slate-400 ml-1">min</span><span class="text-slate-300 mx-2">|</span><span class="mono">${distKm.toFixed(1)}</span><span class="text-slate-400 ml-1">km</span>`;
-            let fetchBtnDisplay = 'block';
-            
             if (route.haversine_time_minutes !== undefined) {
                 statsHtml = `<span class="mono text-amber-600 font-bold">${Math.round(durMin)}</span><span class="text-slate-400 ml-1">min</span><span class="text-slate-300 mx-2">|</span><span class="mono">${distKm.toFixed(1)}</span><span class="text-slate-400 ml-1">km</span>`;
-                fetchBtnDisplay = 'none';
             }
 
             const lane = document.createElement('div');
             lane.className = 'bus-lane relative border-b-2 border-slate-200 transition-all bg-white';
             lane.id = `route-accordion-${i}`;
+            lane.dataset.routeIndex = i;
             if (i > 0) lane.classList.add('collapsed');
 
             const header = document.createElement('div');
@@ -1619,8 +1712,14 @@
             
             let load = students.length;
             let capacity = route.vehicle_capacity || 40;
-            let pct = Math.min(100, (load/capacity)*100);
-            let capacityColor = load > capacity ? '#e11d48' : (load === capacity ? '#f59e0b' : color);
+            let utilizationPct = capacity > 0 ? (load/capacity)*100 : 0;
+            let pct = Math.min(100, utilizationPct);
+            // c1: <50% red (underutilized), 50-75% amber, >=75% green; over-capacity stays rose-600
+            let capacityColor;
+            if (load > capacity) capacityColor = '#e11d48';
+            else if (utilizationPct < 50) capacityColor = '#ef4444';
+            else if (utilizationPct < 75) capacityColor = '#f59e0b';
+            else capacityColor = '#10b981';
             
             header.innerHTML = `
                 <div class="absolute left-0 top-0 bottom-0 w-1" style="background: ${lineColor}"></div>
@@ -1630,12 +1729,13 @@
                 <div class="w-2 h-2 rounded-full mr-2.5 ring-2 ring-offset-1" style="background: ${color}; --tw-ring-color: ${color}30;"></div>
                 <span class="font-bold text-sm mono tracking-tight text-slate-900">${busLabel}</span>
                 <div class="flex items-center gap-3 ml-4 text-xs flex-1">
-                    <div class="flex items-center gap-1.5" title="Capacity: ${load}/${capacity}">
+                    <div class="flex items-center gap-1.5" title="Utilization: ${load}/${capacity} (${Math.round(utilizationPct)}%)">
                         <i data-lucide="users" class="w-3 h-3 text-slate-400"></i>
                         <span class="mono text-xs capacity-badge ${load > capacity ? 'text-rose-600 font-bold' : 'text-slate-700 font-medium'}" data-bus-index="${i}" data-capacity="${capacity}">${load}/${capacity}</span>
                         <div class="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div class="h-full rounded-full transition-all" style="width: ${pct}%; background: ${capacityColor};"></div>
+                            <div class="capacity-bar h-full rounded-full transition-all" style="width: ${pct}%; background: ${capacityColor};"></div>
                         </div>
+                        <span class="capacity-pct mono text-[10px] font-bold tabular-nums" style="color: ${capacityColor};">${Math.round(utilizationPct)}%</span>
                     </div>
                     <span class="flex items-center" id="route-stats-${i}">
                         <i data-lucide="clock" class="w-3 h-3 text-slate-400 mr-1"></i>
@@ -1644,9 +1744,8 @@
                     ${hasRouteViolations ? '<span class="flex items-center gap-1 px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-semibold"><i data-lucide="alert-triangle" class="w-2.5 h-2.5"></i> Over limit</span>' : ''}
                 </div>
                 <div class="ml-auto flex items-center gap-1">
-                    <button onclick="fetchAndDrawRoute(${i}, '${color}')" title="Fetch" id="fetchBtn-${i}" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 text-amber-500 transition-colors" style="display:${fetchBtnDisplay};"><i data-lucide="zap" class="w-3.5 h-3.5"></i></button>
                     <button onclick="toggleRouteVisibility(${i})" title="Toggle Visibility" id="eyeBtn-${i}" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 text-blue-500 transition-colors"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
-                    <button onclick="playRouteAnimation(${i}, '${color}')" title="Play" id="playBtn-${i}" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 text-emerald-600 transition-colors"><i data-lucide="play" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="openRouteDetailPanel(${i})" title="View Details" id="infoBtn-${i}" class="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-100 text-violet-600 transition-colors"><i data-lucide="info" class="w-3.5 h-3.5"></i></button>
                 </div>
             `;
             
@@ -1758,19 +1857,22 @@
         });
 
         const unassignedLane = document.createElement('div');
-        unassignedLane.className = 'bus-lane relative border-b-2 border-slate-200 bg-amber-50/30';
+        unassignedLane.className = 'bus-lane relative border-b-2 border-amber-300 bg-amber-50';
         unassignedLane.innerHTML = `
-            <div class="flex items-center h-11 px-6 sticky z-10 bg-amber-50/80 border-l-4 border-amber-400 cursor-pointer" style="top:0" onclick="this.parentElement.classList.toggle('collapsed')">
+            <div class="flex items-center h-11 px-6 bg-amber-100/95 border-l-4 border-amber-400 cursor-pointer" onclick="this.parentElement.classList.toggle('collapsed')">
                 <button class="w-5 h-5 mr-2 flex items-center justify-center text-amber-700 hover:bg-amber-100 rounded transition-colors chevron-icon"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>
                 <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-600 mr-2"></i>
                 <span class="font-bold text-sm text-amber-900">Unassigned students</span>
                 <span class="ml-3 mono text-xs font-bold text-amber-700" id="unassignedCountBadge">0</span>
+                <span class="ml-auto text-[10px] text-amber-600/80">drop here to unassign</span>
             </div>
-            <div id="unassignedList" class="bus-rows sortable-bus-list" data-bus-index="-1" style="min-height:60px;">
+            <div id="unassignedList" class="bus-rows sortable-bus-list" data-bus-index="-1" style="min-height:60px; max-height:140px; overflow-y:auto;">
                 <div id="unassignedEmptyText" class="h-12 mx-6 my-2 border-2 border-dashed border-amber-200 rounded-lg flex items-center justify-center text-xs text-amber-600/70">Drop students here to unassign</div>
             </div>
         `;
-        listsContainer.appendChild(unassignedLane);
+        const unassignedHost = document.getElementById('unassignedLaneContainer');
+        unassignedHost.innerHTML = '';
+        unassignedHost.appendChild(unassignedLane);
 
         new Sortable(document.getElementById('unassignedList'), {
             group: 'shared-buses', animation: 150, handle: '.drag-handle', ghostClass: 'opacity-50',
@@ -1779,6 +1881,9 @@
 
         if(typeof lucide !== 'undefined') lucide.createIcons();
         document.getElementById('optimisationResult').innerText = `Generated ${data.routes.length} routes covering ${data.total_students} students.`;
+
+        // Re-apply filters to the freshly rendered DOM (preserves user filter state across re-renders)
+        applyRouteFilters();
     }
     
     function unassignSingleStudent(btnElement, studentId, event, isHeader = false) {
@@ -1873,24 +1978,26 @@
         evaluateCapacityLimits();
     }
 
-    function unassignStudent(btnElement) {
+    function saveAction(action) {
+        undoStack.push(action);
+        const btn = document.getElementById('undoBtn');
+        if (btn) btn.style.display = '';
+        const bar = document.getElementById('floatingActionBar');
+        if (bar) bar.style.display = 'flex';
+    }
+
+    function unassignStudent(btnElement, event) {
+        if(event) event.stopPropagation();
         if (isUndoing) return;
 
         const item = btnElement.closest('.student-drag-item');
         const fromList = item.parentElement;
-        const sibling = item.nextElementSibling; // Store to insert back precisely
+        const sibling = item.nextElementSibling;
         const unassignedList = document.getElementById('unassignedList');
 
-        // Add to undo stack
-        undoStack.push({
-            type: 'unassign',
-            item: item,
-            from: fromList,
-            sibling: sibling
-        });
-        document.getElementById('undoBtn').style.display = 'inline-block';
+        saveAction({ type: 'unassign', item: item, from: fromList, sibling: sibling });
 
-        // Remove empty text if needed
+        // Remove empty text from unassigned if needed
         const emptyText = document.getElementById('unassignedEmptyText');
         if (emptyText) emptyText.style.display = 'none';
 
@@ -1898,9 +2005,9 @@
         unassignedList.appendChild(item);
 
         // Check if from list became empty
-        const emptyTextFrom = fromList.querySelector('div[style*="text-align:center"]');
+        const emptyTextFrom = fromList.querySelector('.h-12.mx-6.my-2');
         if (emptyTextFrom && fromList.querySelectorAll('.student-drag-item').length === 0) {
-            emptyTextFrom.style.display = 'block';
+            emptyTextFrom.style.display = 'flex';
         }
 
         // Trigger action bar
@@ -1912,30 +2019,28 @@
     function handleDragEnd(evt) {
         if (isUndoing) return;
 
-        // Add to undo stack
+        // Save for undo if the item actually moved
         if (evt.from !== evt.to || evt.oldIndex !== evt.newIndex) {
-            undoStack.push({
+            saveAction({
                 type: 'drag',
                 item: evt.item,
                 from: evt.from,
                 to: evt.to,
-                oldIndex: evt.oldIndex,
-                newIndex: evt.newIndex,
-                sibling: evt.item.nextElementSibling // Note: nextSibling after move might not be original, but Sortable handles it if we just use indices, or we store the original sibling during onStart. We'll use insertBefore with the specific lists.
+                oldIndex: evt.oldIndex
             });
-            document.getElementById('undoBtn').style.display = 'inline-block';
         }
 
+        // Trigger action bar
         document.getElementById('floatingActionBar').style.display = 'flex';
 
-        const emptyText = evt.to.querySelector('div[style*="text-align:center"]');
+        const emptyText = evt.to.querySelector('.h-12.mx-6.my-2');
         if (emptyText && evt.to.querySelectorAll('.student-drag-item').length > 0) {
             emptyText.style.display = 'none';
         }
 
-        const emptyTextFrom = evt.from.querySelector('div[style*="text-align:center"]');
+        const emptyTextFrom = evt.from.querySelector('.h-12.mx-6.my-2');
         if (emptyTextFrom && evt.from.querySelectorAll('.student-drag-item').length === 0) {
-            emptyTextFrom.style.display = 'block';
+            emptyTextFrom.style.display = 'flex';
         }
 
         updateUnassignedCount();
@@ -1943,58 +2048,44 @@
     }
 
     function undoLastAction() {
+        // Discard ALL pending changes in one click — pop in LIFO order so each
+        // step rolls back the most recent move first, eventually restoring the
+        // last applied state.
         if (undoStack.length === 0) return;
 
-        isUndoing = true; // Prevent triggering events
-        const action = undoStack.pop();
+        isUndoing = true;
 
-        if (action.type === 'drag') {
-            // Move item back
-            const targetItems = Array.from(action.from.children);
-            // Insert at the old index. If oldIndex > current items, append.
-            // Note: Sortable JS elements include the 'emptyText' div, so indices might be off.
-            // Using insertBefore or appendChild directly.
-            if (action.from.children.length > action.oldIndex) {
-                action.from.insertBefore(action.item, action.from.children[action.oldIndex]);
-            } else {
-                action.from.appendChild(action.item);
-            }
+        while (undoStack.length > 0) {
+            const action = undoStack.pop();
 
-            // Fix empty texts
-            const emptyTextTo = action.to.querySelector('div[style*="text-align:center"]');
-            if (emptyTextTo && action.to.querySelectorAll('.student-drag-item').length === 0) {
-                emptyTextTo.style.display = 'block';
-            }
-            const emptyTextFrom = action.from.querySelector('div[style*="text-align:center"]');
-            if (emptyTextFrom && action.from.querySelectorAll('.student-drag-item').length > 0) {
-                emptyTextFrom.style.display = 'none';
-            }
-
-        } else if (action.type === 'unassign') {
-            if (action.sibling && action.from.contains(action.sibling)) {
-                action.from.insertBefore(action.item, action.sibling);
-            } else {
-                action.from.appendChild(action.item);
-            }
-
-            // Fix empty texts
-            const emptyTextTo = document.getElementById('unassignedEmptyText');
-            if (emptyTextTo && document.getElementById('unassignedList').querySelectorAll('.student-drag-item').length === 0) {
-                emptyTextTo.style.display = 'block';
-            }
-            const emptyTextFrom = action.from.querySelector('div[style*="text-align:center"]');
-            if (emptyTextFrom && action.from.querySelectorAll('.student-drag-item').length > 0) {
-                emptyTextFrom.style.display = 'none';
+            if (action.type === 'drag') {
+                if (action.from.children.length > action.oldIndex) {
+                    action.from.insertBefore(action.item, action.from.children[action.oldIndex]);
+                } else {
+                    action.from.appendChild(action.item);
+                }
+            } else if (action.type === 'unassign') {
+                if (action.sibling && action.from.contains(action.sibling)) {
+                    action.from.insertBefore(action.item, action.sibling);
+                } else {
+                    action.from.appendChild(action.item);
+                }
             }
         }
+
+        // After all moves are reverted, refresh the empty-state placeholder for every lane
+        document.querySelectorAll('.sortable-bus-list').forEach(list => {
+            const placeholder = list.querySelector('.h-12.mx-6.my-2');
+            if (!placeholder) return;
+            const hasItems = list.querySelectorAll('.student-drag-item').length > 0;
+            placeholder.style.display = hasItems ? 'none' : 'flex';
+        });
 
         checkCapacities();
         updateUnassignedCount();
 
-        if (undoStack.length === 0) {
-            document.getElementById('undoBtn').style.display = 'none';
-            // Optional: Hide action bar if no changes remain (but we don't track absolute state diff, so leave it visible until apply)
-        }
+        document.getElementById('undoBtn').style.display = 'none';
+        document.getElementById('floatingActionBar').style.display = 'none';
 
         isUndoing = false;
     }
@@ -2024,6 +2115,29 @@
                 } else {
                     badge.style.color = '#475569';
                     badge.style.background = '#f1f5f9';
+                }
+
+                // c1: keep utilization bar + % in sync after drag-drop
+                const utilizationPct = max > 0 ? (count / max) * 100 : 0;
+                let utilColor;
+                if (count > max) utilColor = '#e11d48';
+                else if (utilizationPct < 50) utilColor = '#ef4444';
+                else if (utilizationPct < 75) utilColor = '#f59e0b';
+                else utilColor = '#10b981';
+
+                const wrapper = badge.parentElement;
+                const bar = wrapper && wrapper.querySelector('.capacity-bar');
+                const pctSpan = wrapper && wrapper.querySelector('.capacity-pct');
+                if (bar) {
+                    bar.style.width = Math.min(100, utilizationPct) + '%';
+                    bar.style.background = utilColor;
+                }
+                if (pctSpan) {
+                    pctSpan.innerText = Math.round(utilizationPct) + '%';
+                    pctSpan.style.color = utilColor;
+                }
+                if (wrapper) {
+                    wrapper.title = `Utilization: ${count}/${max} (${Math.round(utilizationPct)}%)`;
                 }
             }
         });
@@ -2057,32 +2171,35 @@
     // --- RECALCULATE LOGIC ---
     async function applyRouteChanges() {
         const btn = document.getElementById('recalcRoutesBtn');
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recalculating...';
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> Recalculating...';
+        if(typeof lucide !== 'undefined') lucide.createIcons();
         btn.disabled = true;
 
         // Reconstruct routes object from DOM
         const newRoutes = [];
         const lists = document.querySelectorAll('.sortable-bus-list');
-        
+
         lists.forEach((list, i) => {
             const busIndex = list.dataset.busIndex;
             if (busIndex === '-1') return; // Skip unassigned bucket
-            
+
             const originalRoute = optimizedRoutesData.routes[busIndex];
             if (!originalRoute) return;
-            
+
             const routeCopy = { ...originalRoute, students: [] };
-            
+
             const items = list.querySelectorAll('.student-drag-item');
             items.forEach(item => {
-                const groupData = JSON.parse(item.dataset.studentJson);
-                if (Array.isArray(groupData)) {
-                    routeCopy.students.push(...groupData);
+                const stData = JSON.parse(item.dataset.studentJson);
+                // Handle both single student objects and arrays of students (grouped stops)
+                if (Array.isArray(stData)) {
+                    routeCopy.students.push(...stData);
                 } else {
-                    routeCopy.students.push(groupData);
+                    routeCopy.students.push(stData);
                 }
             });
-            
+
             routeCopy.student_count = routeCopy.students.length;
             newRoutes.push(routeCopy);
         });
@@ -2094,26 +2211,30 @@
                 body: JSON.stringify({
                     routes: newRoutes,
                     school_time: document.getElementById('schoolTime').value,
-                    max_ride_time: document.getElementById('maxRideTime').value
+                    max_ride_time: document.getElementById('maxRideTime').value,
+                    service_time: document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
 
             const result = await res.json();
             if (result.error) throw new Error(result.error);
-            
+
             // Update global data and re-render
             optimizedRoutesData.routes = result.routes;
             displayRoutes(optimizedRoutesData);
-            
-            alert('Routes updated successfully!');
-            
+
+            // Hide action bar
+            document.getElementById('floatingActionBar').style.display = 'none';
+            undoStack = [];
+            document.getElementById('undoBtn').style.display = 'none';
+
         } catch (e) {
             console.error(e);
-            alert('Failed to recalculate: ' + e.message);
-        } finally {
-            btn.innerHTML = '<i data-lucide="check-circle-2" class="w-3 h-3"></i> Apply & Recalculate'; lucide.createIcons();
+            alert('Error recalculating routes: ' + e.message);
+            btn.innerHTML = originalHtml;
             btn.disabled = false;
-            document.getElementById('floatingActionBar').style.display = 'none'; // Hide floating bar
+            if(typeof lucide !== 'undefined') lucide.createIcons();
         }
     }
 
@@ -2126,8 +2247,11 @@
             map.removeLayer(animationMarkers[index]);
             delete animationMarkers[index];
         }
-        document.getElementById(`playBtn-${index}`).className = 'fas fa-play-circle';
-        document.getElementById(`playBtn-${index}`).parentElement.style.color = '#10b981';
+        const playBtn = document.getElementById(`playBtn-${index}`);
+        if (playBtn) {
+            playBtn.className = 'fas fa-play-circle';
+            if (playBtn.parentElement) playBtn.parentElement.style.color = '#10b981';
+        }
     }
 
     function playRouteAnimation(index, color) {
@@ -2162,10 +2286,12 @@
         const marker = L.marker(pathCoords[0], { icon: busIcon, zIndexOffset: 1000 }).addTo(map);
         animationMarkers[index] = marker;
 
-        // Change button to stop state
+        // Change button to stop state (button only exists in legacy row layout)
         const btnIcon = document.getElementById(`playBtn-${index}`);
-        btnIcon.className = 'fas fa-stop-circle';
-        btnIcon.parentElement.style.color = '#ef4444';
+        if (btnIcon) {
+            btnIcon.className = 'fas fa-stop-circle';
+            if (btnIcon.parentElement) btnIcon.parentElement.style.color = '#ef4444';
+        }
 
         // Animation Loop
         let frame = 0;
@@ -2203,7 +2329,7 @@
     function clearRouteLines() {
         // Stop any running animations
         Object.keys(animationTimers).forEach(idx => stopRouteAnimation(idx));
-        
+
         Object.values(routeLayers).forEach(l => map.removeLayer(l));
         routeLayers = {};
         pickupMarkers.forEach(m => map.removeLayer(m));
@@ -2211,6 +2337,480 @@
         optimizedRoutesData = null;
         currentRoutes = null;
         document.getElementById('routeDetailsContent').innerHTML = '<div style="text-align: center; color: #94a3b8; padding-top: 20px;">Routes cleared.</div>';
+        const unassignedHost = document.getElementById('unassignedLaneContainer');
+        if (unassignedHost) unassignedHost.innerHTML = '';
+    }
+
+    // ---------------- Route Detail Modal (bus-detail-demo-v5 design) ----------------
+    const ROUTE_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+    const GRADE_COLORS = {
+        P1: '#fbbf24', P2: '#fb923c', P3: '#f87171',
+        P4: '#a78bfa', P5: '#60a5fa', P6: '#34d399'
+    };
+    const RDP_DEFAULT_GRADE_COLOR = '#94a3b8';
+
+    let rdpState = {
+        openIndex: null,
+        expandedStops: new Set(),
+        miniMap: null,
+        miniMapRouteLayer: null,
+        miniMapMarkers: [],
+        miniMapLegend: null
+    };
+
+    function rdpEscape(s) {
+        if (s === undefined || s === null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function rdpGradeColor(grade) {
+        if (!grade) return RDP_DEFAULT_GRADE_COLOR;
+        return GRADE_COLORS[String(grade).toUpperCase()] || RDP_DEFAULT_GRADE_COLOR;
+    }
+
+    // Speed → color gradient for the per-bus mini-map "speed heatmap".
+    // Anchors chosen so the typical post-safety-factor range
+    // (~10 km/h for living_street up to ~68 km/h for motorway) spreads
+    // across the full red→green spectrum.
+    function rdpSpeedColor(kmh) {
+        if (kmh == null || isNaN(kmh)) return '#9ca3af';
+        const t = Math.max(0, Math.min(1, (Number(kmh) - 10) / (70 - 10)));
+        const hue = Math.round(t * 120);
+        return `hsl(${hue}, 78%, 42%)`;
+    }
+
+    function rdpFmtMeters(m) {
+        if (m == null) return '';
+        return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
+    }
+
+    function rdpFmtSeconds(s) {
+        if (s == null) return '';
+        if (s < 60) return `${Math.round(s)} s`;
+        const min = s / 60;
+        return min < 10 ? `${min.toFixed(1)} min` : `${Math.round(min)} min`;
+    }
+
+    function rdpBuildSpeedTooltip(p) {
+        const name = p.road_name
+            ? rdpEscape(p.road_name)
+            : `<span style="color:#94a3b8;font-style:italic">${rdpEscape(p.road_class || 'road')}</span>`;
+        const bus = p.bus_speed_kmh != null ? `${p.bus_speed_kmh} km/h` : '—';
+        const limit = p.maxspeed_kmh != null ? `limit ${p.maxspeed_kmh} km/h` : 'limit n/a';
+        const lengthStr = rdpFmtMeters(p.length_m);
+        const timeStr = rdpFmtSeconds(p.time_s);
+        const sep = (lengthStr && timeStr) ? ' · ' : '';
+        return `
+            <div style="font-size:11px;line-height:1.4;min-width:140px">
+                <div style="font-weight:600;color:#0f172a;margin-bottom:2px">${name}</div>
+                <div><span style="color:#475569">bus</span> <span style="font-weight:600">${bus}</span> <span style="color:#cbd5e1">·</span> <span style="color:#475569">${limit}</span></div>
+                <div style="color:#64748b;font-size:10px;margin-top:1px">${lengthStr}${sep}${timeStr}</div>
+            </div>
+        `;
+    }
+
+    function rdpInitials(name) {
+        if (!name) return '?';
+        return String(name).split(/\s+/).filter(Boolean).map(p => p[0]).slice(0, 2).join('').toUpperCase();
+    }
+
+    function rdpExtractArea(address) {
+        if (!address) return '';
+        const parts = String(address).split(',').map(p => p.trim()).filter(Boolean);
+        return parts.length > 1 ? parts[parts.length - 1] : '';
+    }
+
+    function rdpStudentNotes(s) {
+        const notes = [];
+        if (s.remark) notes.push(s.remark);
+        if (s.address_note) notes.push(s.address_note);
+        return notes;
+    }
+
+    function rdpGroupStops(students) {
+        const groups = new Map();
+        students.forEach(s => {
+            const key = `${parseFloat(s.latitude).toFixed(5)},${parseFloat(s.longitude).toFixed(5)}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(s);
+        });
+        return Array.from(groups.values()).map((group, i) => ({
+            id: i + 1,
+            students: group,
+            time: group[0].pickup_time || '—',
+            address: group[0].address || group[0].name || 'Unknown',
+            area: rdpExtractArea(group[0].address),
+            lat: parseFloat(group[0].latitude),
+            lng: parseFloat(group[0].longitude)
+        }));
+    }
+
+    function openRouteDetailPanel(index) {
+        if (window.event) window.event.stopPropagation();
+        if (!optimizedRoutesData || !optimizedRoutesData.routes) return;
+        const route = optimizedRoutesData.routes[index];
+        if (!route) return;
+
+        rdpState.openIndex = index;
+        rdpState.expandedStops = new Set();
+
+        renderRouteDetailModal(index);
+
+        document.getElementById('rdpBackdrop').classList.add('open');
+        document.getElementById('rdpModalWrap').classList.add('open');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Init mini-map after modal becomes visible (so container has size)
+        setTimeout(() => initRdpMiniMap(index), 60);
+    }
+
+    function closeRouteDetailPanel() {
+        document.getElementById('rdpBackdrop').classList.remove('open');
+        document.getElementById('rdpModalWrap').classList.remove('open');
+        rdpState.openIndex = null;
+        rdpState.expandedStops = new Set();
+    }
+
+    function toggleRdpStop(stopId) {
+        if (rdpState.expandedStops.has(stopId)) {
+            rdpState.expandedStops.delete(stopId);
+        } else {
+            rdpState.expandedStops.add(stopId);
+        }
+        if (rdpState.openIndex !== null) {
+            renderRouteDetailModal(rdpState.openIndex);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+
+    function renderRouteDetailModal(index) {
+        const route = optimizedRoutesData.routes[index];
+        const students = route.students || [];
+        const cap = route.vehicle_capacity || 40;
+        const distKm = route.total_distance_km || route.distance_km || 0;
+        const durMin = route.total_duration_minutes || route.time_minutes || 0;
+
+        let busLabel = `Bus ${index + 1}`;
+        if (route.vehicle_plate && route.vehicle_plate !== 'Pending') busLabel = route.vehicle_plate;
+
+        const arrivalTime = (document.getElementById('schoolTime') && document.getElementById('schoolTime').value)
+            || route.arrival_time || '7:30';
+
+        const stops = rdpGroupStops(students);
+        const school = optimizedRoutesData.school || { name: 'School', address: '' };
+
+        // Header
+        document.getElementById('rdpModalTitle').textContent = busLabel;
+        document.getElementById('rdpModalSubtitle').textContent =
+            `Morning route · ${stops.length} stop${stops.length !== 1 ? 's' : ''} · Arrives ${arrivalTime}`;
+
+        // Stats grid
+        document.getElementById('rdpStatsGrid').innerHTML = `
+            ${rdpStatCell('clock', 'Duration', Math.round(durMin), 'min')}
+            ${rdpStatCell('navigation', 'Distance', distKm.toFixed(1), 'km')}
+            ${rdpStatCell('map-pin', 'Stops', stops.length, stops.length === 1 ? 'stop' : 'stops')}
+            ${rdpStatCell('users', 'Students', `${students.length}/${cap}`, 'pax')}
+        `;
+        document.getElementById('rdpStopsCount').textContent = `${students.length} student${students.length !== 1 ? 's' : ''} total`;
+
+        // Stops list + destination
+        const stopsHtml = stops.map(stop => rdpRenderStopRow(stop)).join('') + rdpRenderDestinationRow(school, arrivalTime);
+        document.getElementById('rdpStopsList').innerHTML = stopsHtml;
+
+    }
+
+    function rdpStatCell(iconName, label, value, unit) {
+        return `
+            <div class="px-4 py-3 bg-white">
+                <div class="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    <i data-lucide="${iconName}" class="w-2.5 h-2.5"></i> ${label}
+                </div>
+                <div class="flex items-baseline gap-1">
+                    <span class="text-lg font-bold text-slate-900 mono">${rdpEscape(value)}</span>
+                    <span class="text-[10px] text-slate-400">${unit}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    function rdpRenderStopRow(stop) {
+        const isExpanded = rdpState.expandedStops.has(stop.id);
+        const hasNotes = stop.students.some(s => rdpStudentNotes(s).length > 0);
+        const maxAvatars = 3;
+
+        const avatarsHtml = stop.students.slice(0, maxAvatars).map(s => {
+            const color = rdpGradeColor(s.grade);
+            return `<div class="w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-bold text-white" style="background:${color};">${rdpEscape(rdpInitials(s.name))}</div>`;
+        }).join('');
+        const moreHtml = stop.students.length > maxAvatars
+            ? `<div class="w-6 h-6 rounded-full ring-2 ring-white bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">+${stop.students.length - maxAvatars}</div>`
+            : '';
+
+        const studentCardsHtml = isExpanded ? `
+            <div class="ml-9 mb-3 space-y-1.5 rdp-stop-students">
+                ${stop.students.map(s => rdpRenderStudentCard(s)).join('')}
+            </div>
+        ` : '';
+
+        return `
+            <div class="rdp-stop-row">
+                <div class="rdp-stop-connector"></div>
+                <button onclick="toggleRdpStop(${stop.id})" class="relative w-full flex items-center gap-3 py-2 hover:bg-slate-50 -mx-2 px-2 rounded-md transition-colors group">
+                    <div class="w-7 h-7 rounded-full ring-4 ring-white bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0 z-10 mono">${stop.id}</div>
+                    <div class="flex-1 min-w-0 text-left">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-semibold text-slate-800 truncate">${rdpEscape(stop.address)}</span>
+                            ${stop.area ? `<span class="text-[11px] text-slate-400 shrink-0">· ${rdpEscape(stop.area)}</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                            <span class="mono">${rdpEscape(stop.time)}</span>
+                            <span class="text-slate-300">·</span>
+                            <span class="font-semibold text-slate-700">${stop.students.length} student${stop.students.length !== 1 ? 's' : ''}</span>
+                            ${hasNotes ? '<span class="text-slate-300">·</span><span class="flex items-center gap-1 text-amber-600 font-medium"><i data-lucide="alert-circle" class="w-2.5 h-2.5"></i>Has notes</span>' : ''}
+                        </div>
+                    </div>
+                    <div class="flex -space-x-1.5">${avatarsHtml}${moreHtml}</div>
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform shrink-0" style="${isExpanded ? 'transform:rotate(180deg);' : ''}"></i>
+                </button>
+                ${studentCardsHtml}
+            </div>
+        `;
+    }
+
+    function rdpRenderStudentCard(s) {
+        const color = rdpGradeColor(s.grade);
+        const grade = s.grade || '';
+        const initials = rdpInitials(s.name);
+        const phone = s.phone || '';
+        const notes = rdpStudentNotes(s);
+        const studentId = s.student_id || s.id || '';
+
+        return `
+            <div class="bg-white border border-slate-200 hover:border-slate-300 rounded-lg p-2.5 transition-colors group/student">
+                <div class="flex items-start gap-2.5">
+                    <div class="relative shrink-0">
+                        <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-[11px] font-bold" style="background: linear-gradient(135deg, ${color}, ${color}cc);">${rdpEscape(initials)}</div>
+                        ${grade ? `<span class="absolute -bottom-1 -right-1 px-1 text-[8px] font-bold rounded mono ring-2 ring-white" style="background:${color};color:white;">${rdpEscape(grade)}</span>` : ''}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-0.5">
+                            <span class="text-sm font-semibold text-slate-800 truncate">${rdpEscape(s.name || '—')}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1.5">
+                            ${studentId ? `<span class="mono">#${rdpEscape(studentId)}</span>` : ''}
+                            ${studentId && phone ? '<span class="text-slate-300">·</span>' : ''}
+                            ${phone ? `<span class="mono">${rdpEscape(phone)}</span>` : (studentId ? '' : '<span class="text-slate-400">No contact info</span>')}
+                            ${s.pickup_time ? `<span class="text-slate-300">·</span><span class="mono">${rdpEscape(s.pickup_time)}</span>` : ''}
+                            ${s.ride_duration_minutes !== undefined ? `<span class="text-slate-300">·</span><span class="mono">${s.ride_duration_minutes}m ride</span>` : ''}
+                        </div>
+                        ${notes.length > 0 ? `
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                ${notes.map(n => `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded text-[10px] font-medium"><i data-lucide="alert-circle" class="w-2.5 h-2.5 text-amber-600"></i>${rdpEscape(n)}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                    ${phone ? `
+                        <a href="tel:${rdpEscape(phone)}" class="shrink-0 h-7 px-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md flex items-center gap-1 transition-colors opacity-0 group-hover/student:opacity-100" title="Call ${rdpEscape(phone)}">
+                            <i data-lucide="phone" class="w-2.5 h-2.5"></i>Call
+                        </a>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    function rdpRenderDestinationRow(school, arrivalTime) {
+        const name = (school && school.name) || 'School';
+        const address = (school && school.address) || '';
+        const area = rdpExtractArea(address);
+        return `
+            <div class="relative mt-1">
+                <div class="relative flex items-center gap-3 py-2.5 -mx-2 px-2 bg-gradient-to-r from-emerald-50 to-transparent rounded-md">
+                    <div class="w-7 h-7 rounded-full ring-4 ring-white bg-emerald-600 text-white flex items-center justify-center shrink-0 z-10 shadow-sm">
+                        <i data-lucide="flag" class="w-3 h-3"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-0.5">
+                            <span class="text-[9px] font-bold text-emerald-700 uppercase tracking-wider px-1.5 py-0.5 bg-emerald-100 rounded">Destination</span>
+                            <i data-lucide="school" class="w-3 h-3 text-emerald-600"></i>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-bold text-slate-900 truncate">${rdpEscape(name)}</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                            <span class="mono font-semibold text-emerald-700">Arrives ${rdpEscape(arrivalTime)}</span>
+                            ${address ? `<span class="text-slate-300">·</span><span class="truncate">${rdpEscape(address)}${area ? '' : ''}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function initRdpMiniMap(index) {
+        const route = optimizedRoutesData.routes[index];
+        const container = document.getElementById('rdpMiniMap');
+        if (!container || !route) return;
+
+        if (!rdpState.miniMap) {
+            rdpState.miniMap = L.map(container, {
+                zoomControl: false, attributionControl: false
+            }).setView([1.3521, 103.8198], 12);
+            L.tileLayer('https://www.onemap.gov.sg/maps/tiles/Default/{z}/{x}/{y}.png', {
+                maxZoom: 19, attribution: ''
+            }).addTo(rdpState.miniMap);
+        }
+
+        // Clear previous overlays
+        if (rdpState.miniMapRouteLayer) {
+            rdpState.miniMap.removeLayer(rdpState.miniMapRouteLayer);
+            rdpState.miniMapRouteLayer = null;
+        }
+        rdpState.miniMapMarkers.forEach(m => rdpState.miniMap.removeLayer(m));
+        rdpState.miniMapMarkers = [];
+        if (rdpState.miniMapLegend) {
+            rdpState.miniMap.removeControl(rdpState.miniMapLegend);
+            rdpState.miniMapLegend = null;
+        }
+
+        const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
+
+        // Build the polyline. Three modes, in priority order:
+        //   (a) Speed-heatmap: each segment's road_parts → one Leaflet polyline
+        //       per part, colored by bus speed, with a hover tooltip.
+        //   (b) Flat geometry: legacy/fallback when road_parts isn't available
+        //       (e.g. loaded from a saved run that predates this feature).
+        //   (c) Straight lines through stops when no road geometry exists yet.
+        const layers = [];
+        let drewHeatmap = false;
+
+        if (route.segments && route.segments.length > 0) {
+            // First pass: collect all road_parts from segments that have them.
+            // Segments without road_parts but with geometry get a plain
+            // route-color line so we don't lose any drawn portion.
+            const flatFallback = [];
+            route.segments.forEach(seg => {
+                if (Array.isArray(seg.road_parts) && seg.road_parts.length > 0) {
+                    seg.road_parts.forEach(part => {
+                        if (!part.coords || part.coords.length < 2) return;
+                        const segColor = rdpSpeedColor(part.bus_speed_kmh);
+                        const baseWeight = 8;
+                        // Dark outline first (rendered below the colored segment)
+                        // so each speed-color band stands out against road tiles.
+                        layers.push(L.polyline(part.coords, {
+                            color: '#000000',
+                            weight: baseWeight + 4,
+                            opacity: 0.45,
+                            lineCap: 'round',
+                            lineJoin: 'round',
+                            interactive: false
+                        }));
+                        const line = L.polyline(part.coords, {
+                            color: segColor,
+                            weight: baseWeight,
+                            opacity: 1.0,
+                            lineCap: 'round',
+                            lineJoin: 'round'
+                        });
+                        line.bindTooltip(rdpBuildSpeedTooltip(part), {
+                            sticky: true,
+                            direction: 'top',
+                            opacity: 0.95,
+                            className: 'rdp-speed-tip'
+                        });
+                        line.on('mouseover', () => line.setStyle({ weight: baseWeight + 5, opacity: 1 }));
+                        line.on('mouseout', () => line.setStyle({ weight: baseWeight, opacity: 1.0 }));
+                        layers.push(line);
+                        drewHeatmap = true;
+                    });
+                } else if (seg.geometry && seg.geometry.length > 0) {
+                    flatFallback.push(seg.geometry);
+                }
+            });
+            flatFallback.forEach(geom => {
+                layers.push(L.polyline(geom, {
+                    color: '#000000', weight: 10, opacity: 0.45,
+                    lineCap: 'round', lineJoin: 'round', interactive: false
+                }));
+                layers.push(L.polyline(geom, {
+                    color: color, weight: 7, opacity: 0.95,
+                    lineCap: 'round', lineJoin: 'round'
+                }));
+            });
+        } else if (route.geometry) {
+            layers.push(L.polyline(route.geometry, {
+                color: '#000000', weight: 10, opacity: 0.45,
+                lineCap: 'round', lineJoin: 'round', interactive: false
+            }));
+            layers.push(L.polyline(route.geometry, {
+                color: color, weight: 7, opacity: 0.95,
+                lineCap: 'round', lineJoin: 'round'
+            }));
+        }
+
+        if (layers.length === 0) {
+            const points = (route.students || []).map(s => [s.latitude, s.longitude]).filter(p => p[0] && p[1]);
+            if (points.length > 1) {
+                layers.push(L.polyline(points, {
+                    color: color, weight: 5, opacity: 0.75, dashArray: '6,8'
+                }));
+            }
+        }
+
+        if (layers.length > 0) {
+            rdpState.miniMapRouteLayer = L.featureGroup(layers).addTo(rdpState.miniMap);
+        }
+
+        if (drewHeatmap) {
+            const legend = L.control({ position: 'bottomleft' });
+            legend.onAdd = function () {
+                const div = L.DomUtil.create('div', 'rdp-speed-legend');
+                const stops = [10, 25, 40, 55, 70];
+                const gradient = stops.map(s => rdpSpeedColor(s)).join(', ');
+                div.innerHTML = `
+                    <div style="font-size:10px;color:#475569;font-weight:600;margin-bottom:3px;letter-spacing:0.02em">Bus speed (km/h)</div>
+                    <div style="height:8px;width:140px;border-radius:4px;background:linear-gradient(90deg, ${gradient});box-shadow:0 1px 2px rgba(15,23,42,0.15)"></div>
+                    <div style="display:flex;justify-content:space-between;font-size:9px;color:#64748b;margin-top:2px;font-family:'JetBrains Mono',monospace">
+                        <span>10</span><span>25</span><span>40</span><span>55</span><span>70+</span>
+                    </div>
+                `;
+                div.style.cssText = 'background:rgba(255,255,255,0.92);padding:6px 8px;border-radius:6px;border:1px solid rgba(15,23,42,0.08);box-shadow:0 2px 6px rgba(15,23,42,0.08);pointer-events:none;';
+                return div;
+            };
+            legend.addTo(rdpState.miniMap);
+            rdpState.miniMapLegend = legend;
+        }
+
+        // Numbered stop markers
+        const stops = rdpGroupStops(route.students || []);
+        stops.forEach(stop => {
+            if (!stop.lat || !stop.lng) return;
+            const icon = L.divIcon({
+                html: `<div style="width:24px;height:24px;border-radius:50%;background:#2563eb;color:white;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;">${stop.id}</div>`,
+                className: '', iconSize: [24, 24], iconAnchor: [12, 12]
+            });
+            const marker = L.marker([stop.lat, stop.lng], { icon }).addTo(rdpState.miniMap);
+            rdpState.miniMapMarkers.push(marker);
+        });
+
+        // School marker
+        if (optimizedRoutesData.school && optimizedRoutesData.school.latitude) {
+            const sch = optimizedRoutesData.school;
+            const icon = L.divIcon({
+                html: `<div style="width:26px;height:26px;border-radius:50%;background:#10b981;color:white;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M3 22 L3 9 L12 3 L21 9 L21 22 L14 22 L14 14 L10 14 L10 22 Z"/></svg></div>`,
+                className: '', iconSize: [26, 26], iconAnchor: [13, 13]
+            });
+            const marker = L.marker([sch.latitude, sch.longitude], { icon }).addTo(rdpState.miniMap);
+            rdpState.miniMapMarkers.push(marker);
+        }
+
+        // Fit bounds after invalidation
+        setTimeout(() => {
+            rdpState.miniMap.invalidateSize();
+            const bounds = L.latLngBounds([]);
+            if (rdpState.miniMapRouteLayer) bounds.extend(rdpState.miniMapRouteLayer.getBounds());
+            rdpState.miniMapMarkers.forEach(m => bounds.extend(m.getLatLng()));
+            if (bounds.isValid()) rdpState.miniMap.fitBounds(bounds, { padding: [25, 25] });
+        }, 100);
     }
 
     async function saveCurrentRun() {
@@ -2279,7 +2879,6 @@
             if (data.result_json) {
                 // Clear existing
                 clearRouteLines();
-                clearClusters();
 
                 // RESTORE CONTEXT (Fix for Data Discrepancy)
                 if (data.result_json.school) {
@@ -2321,11 +2920,14 @@
                         
                         let badgeHtml = '';
                         if (count > 1) {
-                            badgeHtml = `<div style="position:absolute; top:-5px; right:-5px; background:#ef4444; color:white; border-radius:50%; width:16px; height:16px; font-size:10px; display:flex; align-items:center; justify-content:center; font-weight:bold; border:1px solid white; z-index:1000;">${count}</div>`;
+                            badgeHtml = `<div style="position:absolute; top:-3px; right:-4px; background:#ef4444; color:white; border-radius:50%; min-width:14px; height:14px; padding:0 3px; font-size:9px; line-height:14px; text-align:center; font-weight:bold; border:1.5px solid white; z-index:2;">${count}</div>`;
                         }
 
-                        const iconHtml = `<div class="custom-student-icon" style="position:relative;">
-                            <i class="fas fa-user-graduate"></i>
+                        const iconHtml = `<div class="custom-student-icon">
+                            <svg class="cs-pin-svg" width="24" height="32" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg">
+                                <path class="cs-pin-body" d="M12 1 C6.5 1 2 5.5 2 11 C2 17.5 12 30.5 12 30.5 C12 30.5 22 17.5 22 11 C22 5.5 17.5 1 12 1 Z" stroke="white" stroke-width="1.5"/>
+                                <circle cx="12" cy="11" r="3.5" fill="white"/>
+                            </svg>
                             ${badgeHtml}
                         </div>`;
 
@@ -2333,9 +2935,9 @@
                             icon: L.divIcon({
                                 className: 'student-marker-container',
                                 html: iconHtml,
-                                iconSize: [28, 28],
-                                iconAnchor: [14, 14],
-                                popupAnchor: [0, -14]
+                                iconSize: [24, 32],
+                                iconAnchor: [12, 30],
+                                popupAnchor: [0, -28]
                             })
                         }).addTo(map);
 
@@ -2645,7 +3247,8 @@
                     history: sendHistory,
                     model: chatModel,
                     school_time: document.getElementById('schoolTime')?.value || '07:30',
-                    max_ride_time: document.getElementById('maxRideTime')?.value || 60
+                    max_ride_time: document.getElementById('maxRideTime')?.value || 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });
             const data = await res.json();
@@ -2729,6 +3332,4 @@
         _origDisplayRoutes(data);
         updateChatAvailability();
     };
-
-
 

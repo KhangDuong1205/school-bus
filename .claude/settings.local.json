@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "WebFetch(domain:www.onemap.gov.sg)",
+      "Bash(findstr \".env\")"
+    ]
+  }
+}

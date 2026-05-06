@@ -30,7 +30,7 @@
         if (optimizeBtn) {
             optimizeBtn.disabled = false;
             optimizeBtn.style.background = ''; // restore default css
-            optimizeBtn.innerHTML = '<i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Confirm & Optimize'; lucide.createIcons();
+            optimizeBtn.innerHTML = '<i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Confirm & Optimise'; lucide.createIcons();
             
             // Visual feedback
             optimizeBtn.classList.add('pulse-success');

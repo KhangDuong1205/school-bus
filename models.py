@@ -34,12 +34,15 @@ class RouteHistory(db.Model):
         }
     
     def to_summary_dict(self):
-        """Lightweight dict for listing (without full result_json)"""
+        """Lightweight dict for listing (without full result_json).
+        Includes input_params so the saved-runs sidebar can show the
+        parameters each run was solved with — small payload, big UX win."""
         return {
             'id': self.id,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'name': self.name,
-            'summary': self.summary
+            'summary': self.summary,
+            'input_params': self.input_params,
         }
 
 

@@ -91,6 +91,43 @@
   .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
   .chat-input { flex: 1; resize: none; min-height: 36px; max-height: 120px; padding: 8px 10px; font-size: 0.82rem; border: 1px solid #e2e8f0; border-radius: 6px; outline: none; transition: border-color 0.15s; }
   .chat-input:focus { border-color: #2563eb; }
+
+  /* AI Refine side panel */
+  .ai-refine-panel { position: fixed; top: 0; right: 0; width: 440px; height: 100vh; background: #fff; border-left: 1px solid #e2e8f0; box-shadow: -8px 0 32px rgba(15, 23, 42, 0.15); display: none; flex-direction: column; z-index: 4500; font-family: 'Inter Tight', sans-serif; }
+  .ai-refine-panel.open { display: flex; }
+  .ai-refine-header { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, #faf5ff 0%, #fff 100%); }
+  .ai-refine-header-title { font-size: 0.85rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+  .ai-refine-header-title .sparkle-icon { color: #8b5cf6; }
+  .ai-refine-meta { font-size: 0.7rem; color: #64748b; margin-top: 2px; }
+  .ai-refine-close { margin-left: auto; width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; cursor: pointer; color: #64748b; display: flex; align-items: center; justify-content: center; }
+  .ai-refine-close:hover { background: #f1f5f9; color: #0f172a; }
+  .ai-refine-body { flex: 1; overflow-y: auto; padding: 14px; background: #f8fafc; }
+  .ai-refine-loading { text-align: center; padding: 60px 20px; color: #64748b; }
+  .ai-refine-loading .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #8b5cf6; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-refine-analysis { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.78rem; color: #334155; line-height: 1.5; font-style: italic; }
+  .ai-suggestion-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 10px; transition: border-color 0.15s, box-shadow 0.15s; }
+  .ai-suggestion-card:hover { border-color: #c4b5fd; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.08); }
+  .ai-suggestion-card.applying { opacity: 0.6; pointer-events: none; }
+  .ai-suggestion-type { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #8b5cf6; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .ai-suggestion-narrative { font-size: 0.84rem; color: #1e293b; line-height: 1.5; margin-bottom: 12px; }
+  .ai-verified-block { background: #f8fafc; border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; font-size: 0.72rem; }
+  .ai-verified-row { display: flex; justify-content: space-between; padding: 2px 0; color: #475569; }
+  .ai-verified-row .label { font-weight: 500; }
+  .ai-verified-row .value { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  .ai-verified-row .delta-good { color: #059669; }
+  .ai-verified-row .delta-bad { color: #dc2626; }
+  .ai-verified-row .delta-neutral { color: #64748b; }
+  .ai-suggestion-actions { display: flex; gap: 8px; }
+  .ai-btn-apply { flex: 1; height: 32px; background: #8b5cf6; color: #fff; border: none; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: background 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .ai-btn-apply:hover { background: #7c3aed; }
+  .ai-btn-apply:disabled { background: #cbd5e1; cursor: not-allowed; }
+  .ai-btn-skip { flex: 1; height: 32px; background: #fff; color: #64748b; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .ai-btn-skip:hover { background: #f1f5f9; color: #1e293b; }
+  .ai-refine-empty { text-align: center; padding: 50px 20px; color: #64748b; font-size: 0.82rem; }
+  .ai-refine-empty .icon { font-size: 2rem; margin-bottom: 12px; }
+  .ai-refine-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 12px; }
+  .ai-refine-rejected-note { font-size: 0.7rem; color: #94a3b8; text-align: center; padding: 10px; font-style: italic; }
   .chat-send-btn { width: 36px; height: 36px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .chat-disabled-overlay { position: absolute; inset: 0; background: rgba(248, 250, 252, 0.92); display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.85rem; color: #475569; padding: 20px; z-index: 10; }
   
@@ -223,7 +260,7 @@
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1" title="Lower = slower, more conservative ETAs. Applied to every road class.">Safety Factor</label>
-                            <input type="number" id="safetyFactor" value="0.85" min="0.5" max="1.0" step="0.05" oninput="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
+                            <input type="number" id="safetyFactor" value="0.85" min="0.1" max="1.0" step="0.05" oninput="markSettingsChanged()" class="w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mono text-slate-700">
                         </div>
                     </div>
 
@@ -235,7 +272,7 @@
 
                     <div class="flex gap-2 pt-2">
                         <button id="optimizeMainBtn" onclick="optimiseRoutes()" class="flex-1 h-9 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all shadow-sm">
-                            <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Optimize Routes
+                            <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Optimise Routes
                         </button>
                         <button id="saveRunBtn" onclick="saveCurrentRun()" disabled class="w-10 h-9 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-md flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             <i data-lucide="save" class="w-4 h-4"></i>
@@ -243,13 +280,7 @@
                     </div>
 
                     <div id="optimisationResult" class="text-center text-xs font-medium text-slate-500 py-1">
-                        Ready to optimize.
-                    </div>
-                    <div id="fetchProgressChip" class="text-center pb-1" style="display:none;">
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            Step 2/2 · Refining real roads <span id="fetchProgressCount" class="mono">0/0</span>
-                        </span>
+                        Ready to optimise.
                     </div>
                 </div>
             </div>
@@ -285,7 +316,20 @@
                 <button onclick="toggleAllStudentsVisibility()" id="toggleAllStudentsBtn" class="h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200">
                     <i data-lucide="eye" class="w-3.5 h-3.5 text-purple-500"></i> Students
                 </button>
-                <button onclick="window.location.href='/export-data'" id="exportCsvBtn" disabled class="ml-auto h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 disabled:opacity-50">
+                <div class="ml-3 flex items-center gap-1.5 h-7 px-2.5 border border-blue-200 bg-blue-50 rounded-md" title="Total students assigned across all routes">
+                    <i data-lucide="users" class="w-3.5 h-3.5 text-blue-600"></i>
+                    <span id="totalStudentsKpi" class="text-xs font-bold text-blue-700 mono">–</span>
+                    <span class="text-[10px] text-blue-600/70 font-medium">students</span>
+                </div>
+                <div class="ml-auto flex items-center gap-1">
+                    <button onclick="openAiRefinePanel()" id="aiRefineBtn" disabled class="h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-violet-50 hover:text-violet-700 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 disabled:opacity-50" title="Ask AI (Gemini) to look for further improvements">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-violet-500"></i> AI Refine
+                    </button>
+                    <button onclick="exportForAI()" id="aiExportBtn" disabled class="h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 disabled:opacity-50" title="Export route data in AI-friendly format (clipboard + .txt)">
+                        <i data-lucide="clipboard-copy" class="w-3.5 h-3.5 text-emerald-500"></i> Export for AI
+                    </button>
+                </div>
+                <button onclick="window.location.href='/export-data'" id="exportCsvBtn" disabled class="h-7 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 disabled:opacity-50">
                     <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
                 </button>
                 <button onclick="clearRouteLines()" class="h-7 px-2.5 text-xs font-medium text-slate-500 hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors flex items-center gap-1.5">
@@ -404,10 +448,32 @@
         </div>
     </div>
 
+    <!-- AI REFINE PANEL -->
+    <div class="ai-refine-panel" id="aiRefinePanel">
+        <div class="ai-refine-header">
+            <div>
+                <div class="ai-refine-header-title">
+                    <i data-lucide="sparkles" class="w-4 h-4 sparkle-icon"></i> AI Refinement
+                </div>
+                <div class="ai-refine-meta" id="aiRefineMeta">Analysing routes…</div>
+            </div>
+            <button class="ai-refine-close" onclick="closeAiRefinePanel()" title="Close">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+        <div class="ai-refine-body" id="aiRefineBody">
+            <div class="ai-refine-loading">
+                <div class="spinner"></div>
+                <div>The model is reasoning over your fleet…</div>
+                <div style="font-size: 0.7rem; margin-top: 6px; color: #94a3b8;">This usually takes 10-30 seconds.</div>
+            </div>
+        </div>
+    </div>
+
     <!-- ROUTE DETAIL MODAL (centered) -->
     <div class="rdp-backdrop" id="rdpBackdrop" onclick="closeRouteDetailPanel()"></div>
     <div class="rdp-modal-wrap" id="rdpModalWrap">
-        <div class="rdp-modal bg-white rounded-2xl shadow-2xl w-full" style="max-width:1100px;width:1100px;height:72vh;max-height:72vh;display:flex;flex-direction:column;overflow:hidden;">
+        <div class="rdp-modal bg-white rounded-2xl shadow-2xl w-full" style="max-width:95vw;width:95vw;height:88vh;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;">
             <!-- Header -->
             <div class="px-5 py-4 border-b border-slate-200 flex items-center gap-3 shrink-0">
                 <div class="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
@@ -427,7 +493,7 @@
             <!-- Body -->
             <div class="flex flex-1 min-h-0">
                 <!-- LEFT: Stats + stops -->
-                <div class="flex-1 border-r border-slate-200 flex flex-col min-w-0">
+                <div class="border-r border-slate-200 flex flex-col min-w-0" style="width:40%;">
                     <div class="grid grid-cols-4 divide-x divide-slate-200 border-b border-slate-200 shrink-0" id="rdpStatsGrid"></div>
                     <div class="flex-1 overflow-auto rdp-scrollbar">
                         <div class="px-4 pt-3 pb-2 flex items-center justify-between">
@@ -439,7 +505,7 @@
                 </div>
 
                 <!-- RIGHT: Map -->
-                <div class="relative bg-slate-100 shrink-0" style="width:420px;">
+                <div class="relative bg-slate-100 shrink-0" style="width:60%;">
                     <div id="rdpMiniMap" style="width:100%;height:100%;"></div>
                 </div>
             </div>
@@ -488,7 +554,7 @@
         if (optimizeBtn) {
             optimizeBtn.disabled = false;
             optimizeBtn.style.background = ''; // restore default css
-            optimizeBtn.innerHTML = '<i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Confirm & Optimize'; lucide.createIcons();
+            optimizeBtn.innerHTML = '<i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Confirm & Optimise'; lucide.createIcons();
             
             // Visual feedback
             optimizeBtn.classList.add('pulse-success');
@@ -1330,7 +1396,7 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = "optimized_routes.csv";
+            a.download = "optimised_routes.csv";
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -1490,6 +1556,13 @@
                 const layerGroup = L.layerGroup([outline, line]);
                 routeLayers[index] = layerGroup;
                 layerGroup.addTo(map);
+
+                // Click on route line → scroll to corresponding bus in results
+                const ri = index;
+                [line, outline].forEach(l => {
+                    l.on('click', () => scrollToBusAccordion(ri));
+                    l.setStyle({ interactive: true });
+                });
                 
                 // Don't fitBounds during background batch — would jerk the map for each completion
                 if (!isBackground) {
@@ -1571,7 +1644,8 @@
         const session = ++currentSolveSession;
 
         // Hide any leftover fetch chip from a previous run
-        document.getElementById('fetchProgressChip').style.display = 'none';
+        const fetchChip = document.getElementById('fetchProgressChip');
+        if (fetchChip) fetchChip.style.display = 'none';
 
         // Phase 1 — Solving (button disabled, shows elapsed seconds)
         btn.disabled = true;
@@ -1584,7 +1658,7 @@
             btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Solving routes... <span class="mono">${elapsed}s</span>`;
         };
         setSolvingText();
-        statusDiv.innerHTML = '<span style="color:#f59e0b;">⏳ Step 1/2 · Running OR-Tools optimizer</span>';
+        statusDiv.innerHTML = '<span style="color:#f59e0b;">⏳ Step 1/2 · Running OR-Tools optimiser</span>';
 
         const elapsedTimer = setInterval(() => {
             if (currentSolveSession !== session) return;
@@ -1614,8 +1688,11 @@
             }
 
             displayRoutes(result);
-            document.getElementById('saveRunBtn').disabled = false;
-            
+            // Save button stays disabled until Phase 2 (real-road geometry)
+            // finishes — saving mid-Phase-2 would persist routes with stub
+            // polylines, which would render imprecisely on reload. See
+            // runBackgroundFetch for the enable-after-completion handoff.
+
             // Show solver parameters in results header
             const solverParamsDisplay = document.getElementById('solverParamsDisplay');
             if (solverParamsDisplay) {
@@ -1625,30 +1702,13 @@
                 solverParamsDisplay.innerHTML = `<i class="fas fa-cog"></i> Solving: <b>${serviceTime}s</b>/pax, <b>${maxRideTime}min</b> limit, safety <b>${Number(safety).toFixed(2)}</b>`;
             }
             
-            statusDiv.innerHTML = `<span style="color:#10b981;">✅ Optimized! ${result.total_buses} bus(es), ${result.max_route_time_minutes || '?'} min max route</span>`;
+            // Stash final summary for runBackgroundFetch to display once Phase 2 completes.
+            statusDiv.dataset.finalSummary =
+                `✅ Optimised! ${result.total_buses} bus(es), ${result.max_route_time_minutes || '?'} min max route`;
 
-            // TWO-STATE WORKFLOW: Switch to Results Mode
-            const setupContainer = document.getElementById('setupContainer');
-            const resultsHeader = document.getElementById('resultsHeader');
-            if (setupContainer && resultsHeader) {
-                setupContainer.style.display = 'none';
-                resultsHeader.style.display = 'block';
-                
-                const schoolTime = document.getElementById('schoolTime').value;
-                const maxRideTime = document.getElementById('maxRideTime').value;
-                const serviceTime = document.getElementById('serviceTime') ? document.getElementById('serviceTime').value : 60;
-                const safety = document.getElementById('safetyFactor')?.value || 0.85;
-
-                document.getElementById('resultsSummaryText').innerHTML = `
-                    <span><strong>Target:</strong> ${schoolTime}</span>
-                    <span><strong>Limit:</strong> ${maxRideTime}m</span>
-                    <span><strong>Service:</strong> ${serviceTime}s/pax</span>
-                    <span><strong>Safety:</strong> ${Number(safety).toFixed(2)}</span>
-                    <span><strong>Result:</strong> ${result.total_buses} Buses</span>
-                `;
-            }
-
-            // Phase 2 — kick off background fetch of real geometry (non-blocking)
+            // Phase 2 — kick off background fetch of real geometry (non-blocking).
+            // runBackgroundFetch updates statusDiv to "Step 2/2 · Refining (k/N)" then
+            // swaps in the final summary above when all routes finish.
             runBackgroundFetch(session);
 
         } catch (e) {
@@ -1656,14 +1716,13 @@
             if (currentSolveSession !== session) return;
             console.error(e);
             const msg = e.message || e.toString();
-            statusDiv.innerHTML = `<span style="color:#ef4444;">❌ Optimization failed: ${msg}</span>`;
-            alert(`Optimization failed:\n${msg}\nCheck console for details.`);
-        } finally {
+            statusDiv.innerHTML = `<span style="color:#ef4444;">❌ Optimisation failed: ${msg}</span>`;
+            alert(`Optimisation failed:\n${msg}\nCheck console for details.`);        } finally {
             clearInterval(elapsedTimer);
             // Only reset button styling if this session is still current.
             // (A newer solve will set its own state.)
             if (currentSolveSession === session) {
-                btn.innerHTML = '<i class="fas fa-magic"></i> Re-Optimize';
+                btn.innerHTML = '<i class="fas fa-magic"></i> Re-Optimise';
                 btn.disabled = false;
                 btn.style.background = '';
                 btn.style.animation = '';
@@ -1676,16 +1735,17 @@
         const total = optimizedRoutesData.routes.length;
         if (total === 0) return;
 
-        const chip = document.getElementById('fetchProgressChip');
-        const counter = document.getElementById('fetchProgressCount');
+        const statusDiv = document.getElementById('optimisationResult');
         const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
         let done = 0;
 
-        // Reset chip to active "refining" state in case it got swapped to "done" earlier
-        const chipSpan = chip.querySelector('span');
-        chipSpan.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold';
-        chipSpan.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Step 2/2 · Refining real roads <span id="fetchProgressCount" class="mono">0/${total}</span>`;
-        chip.style.display = '';
+        const renderProgress = () => {
+            if (currentSolveSession !== session) return;
+            statusDiv.innerHTML =
+                `<span style="color:#f59e0b;">⏳ Step 2/2 · Refining real roads ` +
+                `<span class="mono">${done}/${total}</span></span>`;
+        };
+        renderProgress();
 
         const tasks = [];
         for (let i = 0; i < total; i++) {
@@ -1695,8 +1755,7 @@
                 } catch (_) { /* swallow per-route errors, surface via console inside fn */ }
                 if (currentSolveSession !== session) return;
                 done++;
-                const el = document.getElementById('fetchProgressCount');
-                if (el) el.textContent = `${done}/${total}`;
+                renderProgress();
             })(i));
         }
 
@@ -1704,38 +1763,39 @@
 
         if (currentSolveSession !== session) return;
 
-        // Brief "done" state, then hide
-        const span = chip.querySelector('span');
-        span.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold';
-        span.innerHTML = '<i class="fas fa-check"></i> All routes refined with real road data';
-        setTimeout(() => {
-            if (currentSolveSession === session) chip.style.display = 'none';
-        }, 3000);
+        // Final summary — set on statusDiv by the caller before invoking us.
+        const finalText = statusDiv.dataset.finalSummary
+            || `All ${total} route(s) refined with real road data`;
+        statusDiv.innerHTML = `<span style="color:#10b981;">${finalText}</span>`;
+        delete statusDiv.dataset.finalSummary;
+
+        // Phase 2 done — only NOW is it safe to save (routes have real
+        // polylines baked in, so reload will look identical to fresh solve).
+        const saveBtn = document.getElementById('saveRunBtn');
+        if (saveBtn) saveBtn.disabled = false;
     }
 
     function resetToSetup() {
         const setupContainer = document.getElementById('setupContainer');
-        const resultsHeader = document.getElementById('resultsHeader');
         const container = document.getElementById('busListsContainer');
         const exportBtn = document.getElementById('exportCsvBtn');
         const saveRunBtn = document.getElementById('saveRunBtn');
         const actionBar = document.getElementById('floatingActionBar');
         const statusDiv = document.getElementById('optimisationResult');
-        
-        if (setupContainer && resultsHeader) {
+
+        if (setupContainer) {
             setupContainer.style.display = 'block';
-            resultsHeader.style.display = 'none';
         }
         
         // Hide floating action bar
         if (actionBar) actionBar.style.display = 'none';
         
         // Reset status text
-        if (statusDiv) statusDiv.innerHTML = 'Ready to optimize.';
+        if (statusDiv) statusDiv.innerHTML = 'Ready to optimise.';
         
         // Clear lists
         if (container) {
-            container.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 40px 20px;">Run optimization to see routes here</div>';
+            container.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 40px 20px;">Run optimisation to see routes here</div>';
         }
         
         // Stop any running animations
@@ -1876,6 +1936,35 @@
                 firstAccordion.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }, 300);
+    }
+
+    function scrollToBusAccordion(routeIndex) {
+        const accordion = document.getElementById(`route-accordion-${routeIndex}`);
+        if (!accordion) return;
+
+        if (accordion.classList.contains('collapsed')) {
+            accordion.classList.remove('collapsed');
+        }
+
+        const container = document.getElementById('routeDetailsContent');
+        if (container) {
+            const containerRect = container.getBoundingClientRect();
+            const accRect = accordion.getBoundingClientRect();
+            if (accRect.top < containerRect.top || accRect.bottom > containerRect.bottom) {
+                const scrollPos = container.scrollTop + (accRect.top - containerRect.top) - (containerRect.height / 2) + (accRect.height / 2);
+                container.scrollTo({ top: scrollPos, behavior: 'smooth' });
+            }
+        } else {
+            accordion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        const header = accordion.querySelector(':scope > div:first-child');
+        accordion.style.backgroundColor = '#eff6ff';
+        if (header) header.style.backgroundColor = '#dbeafe';
+        setTimeout(() => {
+            accordion.style.backgroundColor = '';
+            if (header) header.style.backgroundColor = '';
+        }, 3000);
     }
 
     function highlightStudentOnMap(lat, lng, studentIdentifier) {
@@ -2078,13 +2167,23 @@
             m._clickTargets = []; 
         });
 
+        const totalStudentsKpi = document.getElementById('totalStudentsKpi');
         if (!data.routes || data.routes.length === 0) {
             container.innerHTML = '<div class="text-center text-slate-400 py-10 text-sm">No feasible routes found.</div>';
+            if (totalStudentsKpi) totalStudentsKpi.textContent = '0';
             return;
+        }
+
+        if (totalStudentsKpi) {
+            totalStudentsKpi.textContent = data.routes.reduce((sum, r) => sum + (r.students ? r.students.length : 0), 0);
         }
 
         const exportBtn = document.getElementById('exportCsvBtn');
         if (exportBtn) exportBtn.disabled = false;
+        const refineBtn = document.getElementById('aiRefineBtn');
+        if (refineBtn) refineBtn.disabled = false;
+        const aiExportBtn = document.getElementById('aiExportBtn');
+        if (aiExportBtn) aiExportBtn.disabled = false;
         
         container.innerHTML = `<div id="busListsContainer" class="min-w-[700px]"></div>`;
         const listsContainer = document.getElementById('busListsContainer');
@@ -2121,7 +2220,14 @@
                 const layerGroup = L.layerGroup([outline, line]);
                 routeLayers[i] = layerGroup;
                 layerGroup.addTo(map);
-                
+
+                // Click on route line → scroll to corresponding bus in results
+                const ri = i;
+                [line, outline].forEach(l => {
+                    l.on('click', () => scrollToBusAccordion(ri));
+                    l.setStyle({ interactive: true });
+                });
+
                 if (i === 0) map.fitBounds(line.getBounds(), { padding: [20, 20] });
             }
 
@@ -2777,6 +2883,592 @@
         document.getElementById('routeDetailsContent').innerHTML = '<div style="text-align: center; color: #94a3b8; padding-top: 20px;">Routes cleared.</div>';
         const unassignedHost = document.getElementById('unassignedLaneContainer');
         if (unassignedHost) unassignedHost.innerHTML = '';
+        const totalStudentsKpi = document.getElementById('totalStudentsKpi');
+        if (totalStudentsKpi) totalStudentsKpi.textContent = '–';
+        const refineBtn = document.getElementById('aiRefineBtn');
+        if (refineBtn) refineBtn.disabled = true;
+        const aiExportBtn = document.getElementById('aiExportBtn');
+        if (aiExportBtn) aiExportBtn.disabled = true;
+        closeAiRefinePanel();
+    }
+
+    // ---------------- AI Refine ----------------
+    let aiRefineCurrentSuggestions = [];
+
+    function openAiRefinePanel() {
+        if (!optimizedRoutesData || !optimizedRoutesData.routes || !optimizedRoutesData.routes.length) {
+            return;
+        }
+        const panel = document.getElementById('aiRefinePanel');
+        const body = document.getElementById('aiRefineBody');
+        const meta = document.getElementById('aiRefineMeta');
+        meta.textContent = 'Analysing with Gemini…';
+        body.innerHTML = `
+            <div class="ai-refine-loading">
+                <div class="spinner"></div>
+                <div>The model is reasoning over your fleet…</div>
+                <div style="font-size: 0.7rem; margin-top: 6px; color: #94a3b8;">This usually takes 10-30 seconds.</div>
+            </div>`;
+        panel.classList.add('open');
+        if (window.lucide) window.lucide.createIcons();
+        fetchAiRefineSuggestions();
+    }
+
+    function closeAiRefinePanel() {
+        const panel = document.getElementById('aiRefinePanel');
+        if (panel) panel.classList.remove('open');
+    }
+
+    async function fetchAiRefineSuggestions() {
+        const body = document.getElementById('aiRefineBody');
+        try {
+            const res = await fetch('/api/ai-refine', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    routes: optimizedRoutesData.routes,
+                    school_time: document.getElementById('schoolTime')?.value || '07:30',
+                    max_ride_time: document.getElementById('maxRideTime')?.value || 60,
+                    service_time: document.getElementById('serviceTime')?.value || 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85,
+                })
+            });
+            const data = await res.json();
+            if (data.error) {
+                body.innerHTML = `<div class="ai-refine-error"><b>AI refine failed:</b><br>${escapeHtml(data.error)}</div>`;
+                return;
+            }
+            renderAiSuggestions(data);
+        } catch (e) {
+            body.innerHTML = `<div class="ai-refine-error"><b>Request failed:</b><br>${escapeHtml(String(e))}</div>`;
+        }
+    }
+
+    function renderAiSuggestions(data) {
+        aiRefineCurrentSuggestions = data.suggestions || [];
+        const body = document.getElementById('aiRefineBody');
+        const meta = document.getElementById('aiRefineMeta');
+        meta.textContent = `Gemini · ${data.model || ''}`;
+
+        if (aiRefineCurrentSuggestions.length === 0) {
+            const rejected = data.rejected_count || 0;
+            body.innerHTML = `
+                ${data.analysis ? `<div class="ai-refine-analysis">${escapeHtml(data.analysis)}</div>` : ''}
+                <div class="ai-refine-empty">
+                    <div class="icon">✨</div>
+                    <div><b>No verified improvements found.</b></div>
+                    <div style="margin-top: 8px;">${rejected > 0 ? `${rejected} suggestion(s) were rejected because they would have violated capacity, ride-time, or sibling constraints.` : 'The current solution looks tight already.'}</div>
+                </div>`;
+            return;
+        }
+
+        let html = '';
+        if (data.analysis) {
+            html += `<div class="ai-refine-analysis">${escapeHtml(data.analysis)}</div>`;
+        }
+
+        aiRefineCurrentSuggestions.forEach((sug, idx) => {
+            html += renderSuggestionCard(sug, idx);
+        });
+
+        if (data.rejected_count > 0) {
+            html += `<div class="ai-refine-rejected-note">${data.rejected_count} other suggestion(s) hidden — failed feasibility check.</div>`;
+        }
+        body.innerHTML = html;
+        if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderSuggestionCard(sug, idx) {
+        const v = sug.verified || {};
+        const delta = v.delta || {};
+        const after = v.after || {};
+        const before = v.before || {};
+
+        const typeLabel = sug.type === 'merge_buses' ? 'Merge buses' :
+                          sug.type === 'move_student' ? 'Move student' : sug.type;
+        const typeIcon = sug.type === 'merge_buses' ? 'git-merge' : 'user-cog';
+
+        // Delta formatting: lower bus count = good, lower km = good, lower max_ride = good
+        const fmtDelta = (val, unit) => {
+            if (val === 0) return `<span class="delta-neutral">±0 ${unit}</span>`;
+            const cls = val < 0 ? 'delta-good' : 'delta-bad';
+            const sign = val > 0 ? '+' : '';
+            return `<span class="${cls}">${sign}${val} ${unit}</span>`;
+        };
+
+        return `
+            <div class="ai-suggestion-card" id="ai-sug-${idx}">
+                <div class="ai-suggestion-type">
+                    <i data-lucide="${typeIcon}" class="w-3.5 h-3.5"></i> ${typeLabel}
+                </div>
+                <div class="ai-suggestion-narrative">${escapeHtml(sug.narrative || '')}</div>
+                <div class="ai-verified-block">
+                    <div class="ai-verified-row">
+                        <span class="label">Buses</span>
+                        <span class="value">${before.bus_count} → ${after.bus_count} ${fmtDelta(delta.bus_count, '')}</span>
+                    </div>
+                    <div class="ai-verified-row">
+                        <span class="label">Max ride</span>
+                        <span class="value">${after.max_ride_min} min ${fmtDelta(delta.max_ride_min, 'min')}</span>
+                    </div>
+                    <div class="ai-verified-row">
+                        <span class="label">Total distance</span>
+                        <span class="value">${after.total_km} km ${fmtDelta(delta.total_km, 'km')}</span>
+                    </div>
+                </div>
+                <div class="ai-suggestion-actions">
+                    <button class="ai-btn-apply" onclick="applyAiSuggestion(${idx})">
+                        <i data-lucide="check" class="w-3.5 h-3.5"></i> Apply
+                    </button>
+                    <button class="ai-btn-skip" onclick="skipAiSuggestion(${idx})">Skip</button>
+                </div>
+            </div>`;
+    }
+
+    async function applyAiSuggestion(idx) {
+        const sug = aiRefineCurrentSuggestions[idx];
+        if (!sug) return;
+        const card = document.getElementById(`ai-sug-${idx}`);
+        if (card) card.classList.add('applying');
+
+        try {
+            const res = await fetch('/api/ai-refine/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    routes: optimizedRoutesData.routes,
+                    suggestion: sug,
+                    school_time: document.getElementById('schoolTime')?.value || '07:30',
+                    max_ride_time: document.getElementById('maxRideTime')?.value || 60,
+                    service_time: document.getElementById('serviceTime')?.value || 60,
+                    safety_factor: document.getElementById('safetyFactor')?.value || 0.85,
+                })
+            });
+            const data = await res.json();
+            if (data.error) {
+                if (card) card.classList.remove('applying');
+                alert(`Could not apply: ${data.error}`);
+                return;
+            }
+            // Update routes and re-render
+            optimizedRoutesData.routes = data.routes;
+            sessionStorage.setItem('latestRoutes', JSON.stringify(data.routes));
+            sessionStorage.setItem('optimizedRoutesFullData', JSON.stringify(optimizedRoutesData));
+            displayRoutes(optimizedRoutesData);
+            // Re-fetch refinement suggestions on the new state
+            document.getElementById('aiRefineBody').innerHTML = `
+                <div class="ai-refine-loading">
+                    <div class="spinner"></div>
+                    <div>Re-analysing after apply…</div>
+                </div>`;
+            fetchAiRefineSuggestions();
+        } catch (e) {
+            if (card) card.classList.remove('applying');
+            alert(`Apply failed: ${e}`);
+        }
+    }
+
+    function skipAiSuggestion(idx) {
+        const card = document.getElementById(`ai-sug-${idx}`);
+        if (card) card.style.display = 'none';
+    }
+
+    // ---------------- AI Export (analytical text dump) ----------------
+    // Generates a token-efficient, pre-analysed text snapshot of the current
+    // routes for pasting into an LLM. Includes proximity matrix, geographic
+    // outliers, and merge candidates so the LLM doesn't have to re-derive
+    // them. Snapshot of bus_count/total_km/max_ride is persisted to
+    // localStorage so the next export can show a HISTORY delta block.
+
+    const AI_EXPORT_HISTORY_KEY = 'aiExportLastSnapshot';
+
+    function exportForAI() {
+        if (!optimizedRoutesData || !optimizedRoutesData.routes || optimizedRoutesData.routes.length === 0) {
+            alert('No routes to export — solve first.');
+            return;
+        }
+        const text = buildAiExport(optimizedRoutesData);
+
+        // Clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(() => {});
+        }
+
+        // Download .txt
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `route-export-${ts}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // Snapshot for next-run HISTORY
+        saveAiExportSnapshot(optimizedRoutesData);
+
+        showAiExportToast(`Copied (${(text.length/1024).toFixed(1)} KB) + downloaded .txt — paste into Claude`);
+    }
+
+    function showAiExportToast(msg) {
+        let toast = document.getElementById('aiExportToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'aiExportToast';
+            toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#0f172a;color:#fff;padding:12px 18px;border-radius:8px;font-size:0.82rem;font-family:Inter Tight,sans-serif;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.25);transition:opacity 0.3s;max-width:380px;line-height:1.4';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.style.opacity = '1';
+        clearTimeout(toast._hideT);
+        toast._hideT = setTimeout(() => { toast.style.opacity = '0'; }, 4000);
+    }
+
+    // --- Geometry helpers ---
+
+    function _haversineKm(a, b) {
+        const R = 6371, toRad = d => d * Math.PI / 180;
+        const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+        const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+        const x = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+        return 2 * R * Math.asin(Math.sqrt(x));
+    }
+
+    function _centroidOf(students) {
+        let lat = 0, lng = 0, n = 0;
+        (students || []).forEach(s => {
+            const la = Number(s.latitude), ln = Number(s.longitude);
+            if (Number.isFinite(la) && Number.isFinite(ln)) { lat += la; lng += ln; n++; }
+        });
+        return n ? { lat: lat/n, lng: lng/n } : { lat: 0, lng: 0 };
+    }
+
+    function _busCap(r) { return Number(r.vehicle_capacity || r.capacity || 40); }
+
+    function _busMaxRide(r) {
+        let mx = 0;
+        (r.students || []).forEach(s => {
+            const v = Number(s.ride_duration_minutes || 0);
+            if (v > mx) mx = v;
+        });
+        return mx;
+    }
+
+    function _readCurrentParams() {
+        const v = id => {
+            const el = document.getElementById(id);
+            return el ? el.value : null;
+        };
+        return {
+            max_ride: Number(v('maxRideTime')) || 60,
+            service_time: Number(v('serviceTime')) || 60,
+            safety: Number(v('safetyFactor')) || 0.85,
+            school_time: v('schoolTime') || '07:30',
+            special_cap: 30,
+        };
+    }
+
+    // --- Analytics ---
+
+    function _computeAiAnalytics(routes) {
+        const n = routes.length;
+        const centroids = routes.map(r => _centroidOf(r.students));
+        const radii = routes.map((r, i) => {
+            let mx = 0;
+            (r.students || []).forEach(s => {
+                const d = _haversineKm(centroids[i], { lat: Number(s.latitude), lng: Number(s.longitude) });
+                if (d > mx) mx = d;
+            });
+            return mx;
+        });
+
+        // Top-5 nearest bus per bus
+        const proximity = [];
+        for (let i = 0; i < n; i++) {
+            const ds = [];
+            for (let j = 0; j < n; j++) {
+                if (i === j) continue;
+                ds.push({ b: j, d: _haversineKm(centroids[i], centroids[j]) });
+            }
+            ds.sort((a, b) => a.d - b.d);
+            proximity.push(ds.slice(0, 5));
+        }
+
+        // Outliers: students closer to a different bus's centroid than to their own
+        const outliers = [];
+        routes.forEach((r, bi) => {
+            (r.students || []).forEach((s, si) => {
+                const sLat = Number(s.latitude), sLng = Number(s.longitude);
+                if (!Number.isFinite(sLat) || !Number.isFinite(sLng)) return;
+                const own = _haversineKm(centroids[bi], { lat: sLat, lng: sLng });
+                let bestD = Infinity, bestB = -1;
+                for (let j = 0; j < n; j++) {
+                    if (j === bi) continue;
+                    const d = _haversineKm(centroids[j], { lat: sLat, lng: sLng });
+                    if (d < bestD) { bestD = d; bestB = j; }
+                }
+                if (bestD + 0.05 < own) {
+                    outliers.push({ bus: bi, sIdx: si, ownDist: own, otherBus: bestB, otherDist: bestD });
+                }
+            });
+        });
+        outliers.sort((a, b) => (b.ownDist - b.otherDist) - (a.ownDist - a.otherDist));
+
+        // Merge candidates: underused pairs, centroids <2.5km apart, fits in larger bus's cap
+        const utils = routes.map((r, i) => ({ i, util: (r.students || []).length / _busCap(r) }));
+        const underused = utils.filter(x => x.util < 0.6);
+        const merges = [];
+        for (let i = 0; i < underused.length; i++) {
+            for (let j = i + 1; j < underused.length; j++) {
+                const a = underused[i].i, b = underused[j].i;
+                const d = _haversineKm(centroids[a], centroids[b]);
+                if (d >= 2.5) continue;
+                const total = routes[a].students.length + routes[b].students.length;
+                const maxCap = Math.max(_busCap(routes[a]), _busCap(routes[b]));
+                if (total <= maxCap) merges.push({ a, b, d, total, maxCap });
+            }
+        }
+        merges.sort((x, y) => x.d - y.d);
+
+        return { centroids, radii, proximity, outliers, mergeCands: merges, utils };
+    }
+
+    // --- HISTORY snapshot ---
+
+    function saveAiExportSnapshot(data) {
+        const routes = data.routes;
+        const params = _readCurrentParams();
+        const totalKm = routes.reduce((s, r) => s + Number(r.distance_km || 0), 0);
+        let maxRide = 0;
+        routes.forEach(r => (r.students || []).forEach(s => {
+            const v = Number(s.ride_duration_minutes || 0);
+            if (v > maxRide) maxRide = v;
+        }));
+        const snap = {
+            ts: Date.now(),
+            bus_count: routes.length,
+            student_count: routes.reduce((s, r) => s + (r.students || []).length, 0),
+            total_km: totalKm,
+            max_ride_min: maxRide,
+            params,
+        };
+        try { localStorage.setItem(AI_EXPORT_HISTORY_KEY, JSON.stringify(snap)); } catch (e) {}
+    }
+
+    function _loadAiExportSnapshot() {
+        try {
+            const raw = localStorage.getItem(AI_EXPORT_HISTORY_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
+    // --- Build the export text ---
+
+    function _fmt(v, dp) { dp = (dp == null ? 2 : dp); return (Number(v) || 0).toFixed(dp); }
+    function _busRef(i) { return 'B' + (i + 1); }
+    function _signed(v, dp) { dp = (dp == null ? 1 : dp); const s = (Number(v) || 0); return (s >= 0 ? '+' : '') + s.toFixed(dp); }
+
+    function buildAiExport(data) {
+        const routes = data.routes;
+        const params = _readCurrentParams();
+        const a = _computeAiAnalytics(routes);
+
+        const totalKm = routes.reduce((s, r) => s + Number(r.distance_km || 0), 0);
+        const totalStudents = routes.reduce((s, r) => s + (r.students || []).length, 0);
+        let maxRide = 0;
+        routes.forEach(r => (r.students || []).forEach(s => {
+            const v = Number(s.ride_duration_minutes || 0);
+            if (v > maxRide) maxRide = v;
+        }));
+
+        // Violations
+        let violations = 0;
+        routes.forEach(r => {
+            const cap = _busCap(r);
+            if ((r.students || []).length > cap) violations++;
+            (r.students || []).forEach(s => {
+                const lim = s.special_needs ? params.special_cap : params.max_ride;
+                if (Number(s.ride_duration_minutes || 0) > lim + 0.05) violations++;
+            });
+        });
+
+        const school = data.school || {};
+        const lastSnap = _loadAiExportSnapshot();
+        const lines = [];
+
+        // Header
+        lines.push('# School-bus route export — AI-analysis format');
+        lines.push('# Anonymized: students referenced as B<bus>S<idx>. Pre-computed: proximity, outliers, merge candidates.');
+        lines.push('# Generated: ' + new Date().toISOString());
+        lines.push('');
+
+        // === TLDR ===
+        lines.push('=== TLDR ===');
+        lines.push(`buses=${routes.length} students=${totalStudents} totalKm=${_fmt(totalKm,1)} longestRide=${_fmt(maxRide,1)}m violations=${violations}`);
+        const underusedCount = a.utils.filter(x => x.util < 0.6).length;
+        const nearCapCount = a.utils.filter(x => x.util >= 0.95).length;
+        lines.push(`underused=${underusedCount} near_cap=${nearCapCount} outliers=${a.outliers.length} merge_candidates=${a.mergeCands.length}`);
+        lines.push('');
+
+        // === HISTORY ===
+        lines.push('=== HISTORY ===');
+        if (lastSnap) {
+            const ageMin = Math.round((Date.now() - lastSnap.ts) / 60000);
+            const dB = routes.length - lastSnap.bus_count;
+            const dKm = totalKm - lastSnap.total_km;
+            const dRide = maxRide - lastSnap.max_ride_min;
+            lines.push(`# Δ vs last export ${ageMin}m ago`);
+            lines.push(`buses: ${lastSnap.bus_count} → ${routes.length} (${_signed(dB,0)})`);
+            lines.push(`totalKm: ${_fmt(lastSnap.total_km,1)} → ${_fmt(totalKm,1)} (${_signed(dKm,1)})`);
+            lines.push(`longestRide: ${_fmt(lastSnap.max_ride_min,1)} → ${_fmt(maxRide,1)} (${_signed(dRide,1)})`);
+            const lp = lastSnap.params || {};
+            lines.push(`prev_params: max_ride=${lp.max_ride} service=${lp.service_time}s safety=${lp.safety}`);
+            const cur = params;
+            const changed = [];
+            if (lp.max_ride !== cur.max_ride) changed.push(`max_ride ${lp.max_ride}→${cur.max_ride}`);
+            if (lp.service_time !== cur.service_time) changed.push(`service ${lp.service_time}→${cur.service_time}`);
+            if (lp.safety !== cur.safety) changed.push(`safety ${lp.safety}→${cur.safety}`);
+            lines.push(`param_changes: ${changed.length ? changed.join(', ') : 'none'}`);
+        } else {
+            lines.push('# No previous export — first run');
+        }
+        lines.push('');
+
+        // === PARAMS ===
+        lines.push('=== PARAMS ===');
+        lines.push(`max_ride=${params.max_ride}m service=${params.service_time}s safety=${params.safety} special_cap=${params.special_cap}m school_arrival=${params.school_time}`);
+        if (Number.isFinite(school.latitude) && Number.isFinite(school.longitude)) {
+            lines.push(`school=${_fmt(school.latitude,5)},${_fmt(school.longitude,5)}`);
+        }
+        lines.push('solver=SAVINGS+TABU_SEARCH time_limit~180s family_constraint=hard special_needs_cap=hard');
+        lines.push('');
+
+        // === DIAGNOSIS ===
+        lines.push('=== DIAGNOSIS ===');
+        lines.push('# Pre-computed insights — saves you from re-deriving');
+
+        const underusedList = a.utils.filter(x => x.util < 0.6).sort((x, y) => x.util - y.util);
+        if (underusedList.length) {
+            lines.push('underused_buses (util<60%):');
+            underusedList.forEach(x => {
+                const r = routes[x.i];
+                lines.push(`  ${_busRef(x.i)} util=${(x.util*100).toFixed(0)}% n=${r.students.length}/${_busCap(r)} maxR=${_fmt(_busMaxRide(r),1)}m`);
+            });
+        } else lines.push('underused_buses: none');
+
+        const nearCapList = a.utils.filter(x => x.util >= 0.95);
+        if (nearCapList.length) {
+            lines.push('near_capacity (util>=95%):');
+            nearCapList.forEach(x => {
+                const r = routes[x.i];
+                lines.push(`  ${_busRef(x.i)} util=${(x.util*100).toFixed(0)}% n=${r.students.length}/${_busCap(r)}`);
+            });
+        }
+
+        const tightTime = routes.map((r, i) => ({ i, max: _busMaxRide(r) }))
+            .filter(x => x.max >= params.max_ride - 3)
+            .sort((x, y) => y.max - x.max);
+        if (tightTime.length) {
+            lines.push(`near_time_limit (within 3m of ${params.max_ride}m cap):`);
+            tightTime.forEach(x => lines.push(`  ${_busRef(x.i)} maxR=${_fmt(x.max,1)}m slack=${_fmt(params.max_ride-x.max,1)}m`));
+        }
+
+        if (a.outliers.length) {
+            lines.push('geographic_outliers (student closer to another bus centroid):');
+            a.outliers.slice(0, 15).forEach(o => {
+                const s = routes[o.bus].students[o.sIdx];
+                const flags = [];
+                if (s.special_needs) flags.push('sn');
+                const fc = s.family_code && String(s.family_code).trim();
+                if (fc) flags.push('fc=' + fc);
+                lines.push(`  ${_busRef(o.bus)}S${o.sIdx+1}: ownDist=${_fmt(o.ownDist,2)}km nearest=${_busRef(o.otherBus)}@${_fmt(o.otherDist,2)}km${flags.length?' '+flags.join(' '):''}`);
+            });
+            if (a.outliers.length > 15) lines.push(`  ... +${a.outliers.length - 15} more`);
+        }
+
+        if (a.mergeCands.length) {
+            lines.push('merge_candidates (underused pairs <2.5km, fits in larger cap):');
+            a.mergeCands.slice(0, 10).forEach(m => {
+                lines.push(`  ${_busRef(m.a)}+${_busRef(m.b)}: centroidDist=${_fmt(m.d,2)}km combined=${m.total}/${m.maxCap}`);
+            });
+            if (a.mergeCands.length > 10) lines.push(`  ... +${a.mergeCands.length - 10} more`);
+        }
+        lines.push('');
+
+        // === PROXIMITY MATRIX ===
+        lines.push('=== PROXIMITY MATRIX ===');
+        lines.push('# Top 5 nearest bus centroids per bus, distance in km');
+        a.proximity.forEach((peers, i) => {
+            const peerStr = peers.map(p => `${_busRef(p.b)}(${_fmt(p.d,2)})`).join(' ');
+            lines.push(`${_busRef(i)}: ${peerStr}`);
+        });
+        lines.push('');
+
+        // === PER-BUS ===
+        lines.push('=== PER-BUS ===');
+        lines.push('# Format: B<i> cap=<C> n=<N> util=<%> t=<min> d=<km> maxR=<min> slack_t=<min> slack_s=<seats>');
+        lines.push('#         centroid=<lat,lng> radius=<km> special=<n> families=<n> shared_stops=<n> unique_stops=<n>');
+        lines.push('#         pickups: <idx> <lat,lng> R=<min> [sn] [fc=<code>]');
+        routes.forEach((r, bi) => {
+            const cap = _busCap(r);
+            const n = (r.students || []).length;
+            const util = n / cap * 100;
+            const t = Number(r.time_minutes || 0);
+            const d = Number(r.distance_km || 0);
+            const mxR = _busMaxRide(r);
+            const slackT = params.max_ride - mxR;
+            const slackS = cap - n;
+            const cent = a.centroids[bi];
+
+            const fams = {};
+            let snC = 0;
+            const stops = new Map();
+            (r.students || []).forEach(s => {
+                if (s.special_needs) snC++;
+                const fc = s.family_code && String(s.family_code).trim();
+                if (fc) fams[fc] = (fams[fc] || 0) + 1;
+                const key = `${_fmt(Number(s.latitude),5)},${_fmt(Number(s.longitude),5)}`;
+                stops.set(key, (stops.get(key) || 0) + 1);
+            });
+            const sharedStops = [...stops.values()].filter(v => v > 1).length;
+
+            lines.push(`${_busRef(bi)} cap=${cap} n=${n} util=${util.toFixed(0)}% t=${_fmt(t,1)}m d=${_fmt(d,2)}km maxR=${_fmt(mxR,1)}m slack_t=${_fmt(slackT,1)}m slack_s=${slackS}`);
+            lines.push(`  centroid=${_fmt(cent.lat,5)},${_fmt(cent.lng,5)} radius=${_fmt(a.radii[bi],2)}km special=${snC} families=${Object.keys(fams).length} shared_stops=${sharedStops} unique_stops=${stops.size}`);
+            (r.students || []).forEach((s, si) => {
+                const flags = [];
+                if (s.special_needs) flags.push('sn');
+                const fc = s.family_code && String(s.family_code).trim();
+                if (fc) flags.push('fc=' + fc);
+                lines.push(`  ${si+1} ${_fmt(Number(s.latitude),5)},${_fmt(Number(s.longitude),5)} R=${_fmt(Number(s.ride_duration_minutes||0),1)}${flags.length?' '+flags.join(' '):''}`);
+            });
+        });
+        lines.push('');
+
+        // === CONSTRAINT SLACK ===
+        lines.push('=== CONSTRAINT SLACK ===');
+        lines.push('# Lowest time slack first, then highest seat slack');
+        const slackRows = routes.map((r, i) => ({
+            i,
+            time_slack: params.max_ride - _busMaxRide(r),
+            seat_slack: _busCap(r) - (r.students || []).length,
+        }));
+        slackRows.sort((x, y) => x.time_slack - y.time_slack);
+        lines.push('time_slack_ascending (top 10):');
+        slackRows.slice(0, 10).forEach(x => lines.push(`  ${_busRef(x.i)} t=${_fmt(x.time_slack,1)}m s=${x.seat_slack}`));
+        const bySeats = [...slackRows].sort((x, y) => y.seat_slack - x.seat_slack);
+        lines.push('seat_slack_descending (top 10):');
+        bySeats.slice(0, 10).forEach(x => lines.push(`  ${_busRef(x.i)} s=${x.seat_slack} t=${_fmt(x.time_slack,1)}m`));
+
+        return lines.join('\n');
+    }
+    // ---------------- /AI Export ----------------
+
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // ---------------- Route Detail Modal (bus-detail-demo-v5 design) ----------------
@@ -3131,11 +3823,21 @@
                     seg.road_parts.forEach(part => {
                         if (!part.coords || part.coords.length < 2) return;
                         const segColor = rdpSpeedColor(part.bus_speed_kmh);
-                        const baseWeight = 5;
+                        const baseWeight = 8;
+                        // Dark outline first (rendered below the colored segment)
+                        // so each speed-color band stands out against road tiles.
+                        layers.push(L.polyline(part.coords, {
+                            color: '#000000',
+                            weight: baseWeight + 4,
+                            opacity: 0.45,
+                            lineCap: 'round',
+                            lineJoin: 'round',
+                            interactive: false
+                        }));
                         const line = L.polyline(part.coords, {
                             color: segColor,
                             weight: baseWeight,
-                            opacity: 0.95,
+                            opacity: 1.0,
                             lineCap: 'round',
                             lineJoin: 'round'
                         });
@@ -3145,8 +3847,8 @@
                             opacity: 0.95,
                             className: 'rdp-speed-tip'
                         });
-                        line.on('mouseover', () => line.setStyle({ weight: baseWeight + 3, opacity: 1 }));
-                        line.on('mouseout', () => line.setStyle({ weight: baseWeight, opacity: 0.95 }));
+                        line.on('mouseover', () => line.setStyle({ weight: baseWeight + 5, opacity: 1 }));
+                        line.on('mouseout', () => line.setStyle({ weight: baseWeight, opacity: 1.0 }));
                         layers.push(line);
                         drewHeatmap = true;
                     });
@@ -3156,13 +3858,21 @@
             });
             flatFallback.forEach(geom => {
                 layers.push(L.polyline(geom, {
-                    color: color, weight: 4, opacity: 0.85,
+                    color: '#000000', weight: 10, opacity: 0.45,
+                    lineCap: 'round', lineJoin: 'round', interactive: false
+                }));
+                layers.push(L.polyline(geom, {
+                    color: color, weight: 7, opacity: 0.95,
                     lineCap: 'round', lineJoin: 'round'
                 }));
             });
         } else if (route.geometry) {
             layers.push(L.polyline(route.geometry, {
-                color: color, weight: 4, opacity: 0.85,
+                color: '#000000', weight: 10, opacity: 0.45,
+                lineCap: 'round', lineJoin: 'round', interactive: false
+            }));
+            layers.push(L.polyline(route.geometry, {
+                color: color, weight: 7, opacity: 0.95,
                 lineCap: 'round', lineJoin: 'round'
             }));
         }
@@ -3171,7 +3881,7 @@
             const points = (route.students || []).map(s => [s.latitude, s.longitude]).filter(p => p[0] && p[1]);
             if (points.length > 1) {
                 layers.push(L.polyline(points, {
-                    color: color, weight: 3, opacity: 0.6, dashArray: '4,6'
+                    color: color, weight: 5, opacity: 0.75, dashArray: '6,8'
                 }));
             }
         }
@@ -3235,10 +3945,26 @@
 
     async function saveCurrentRun() {
         if (!optimizedRoutesData) return;
+        // Snapshot the parameters that produced this result. Without this,
+        // reload restores routes but UI inputs/banner show whatever the user
+        // typed since — and AI Refine would verify against wrong constraints.
+        const v = id => {
+            const el = document.getElementById(id);
+            return el ? el.value : null;
+        };
+        const input_params = {
+            school_time: v('schoolTime'),
+            max_ride_time: v('maxRideTime'),
+            service_time: v('serviceTime'),
+            safety_factor: v('safetyFactor'),
+        };
         const res = await fetch('/api/runs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ result_json: optimizedRoutesData })
+            body: JSON.stringify({
+                result_json: optimizedRoutesData,
+                input_params: input_params,
+            })
         });
         const data = await res.json();
         if (data.success) {
@@ -3248,46 +3974,117 @@
     }
 
     // --- Saved Runs Logic ---
+
+    function _runTimeAgo(ts) {
+        if (!ts) return '';
+        const diff = Date.now() - new Date(ts).getTime();
+        const m = Math.floor(diff / 60000);
+        if (m < 1) return 'just now';
+        if (m < 60) return `${m}m ago`;
+        const h = Math.floor(m / 60);
+        if (h < 24) return `${h}h ago`;
+        const d = Math.floor(h / 24);
+        if (d < 7) return `${d}d ago`;
+        return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+
+    function _parseRunSummary(s) {
+        // Backend formats summary as "N Buses, Xkm, M Students". Pull the
+        // numbers back out so we can render them as styled chips. Falls
+        // back to showing the raw string if the format ever changes.
+        if (!s) return null;
+        const m = s.match(/(\d+)\s*Buses?,\s*([\d.]+)\s*km,\s*(\d+)\s*Students?/i);
+        if (!m) return null;
+        return { buses: m[1], km: m[2], students: m[3] };
+    }
+
     async function loadSavedRuns() {
         const container = document.getElementById('savedRunsContent');
         if (!container) return;
 
-        container.innerHTML = '<div style="text-align: center; color: #94a3b8; padding-top: 20px;">Loading...</div>';
+        container.innerHTML = `
+            <div class="flex items-center justify-center gap-2 py-6 text-xs text-slate-400">
+                <div class="w-3 h-3 border-2 border-slate-200 border-t-emerald-500 rounded-full animate-spin"></div>
+                Loading runs…
+            </div>`;
 
         try {
             const res = await fetch('/api/runs');
             const runs = await res.json();
 
-            if (runs.length === 0) {
-                container.innerHTML = '<div style="text-align: center; color: #94a3b8; padding-top: 20px;">No saved runs.</div>';
+            if (!runs.length) {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-8 px-4 text-center">
+                        <div class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center mb-2">
+                            <i data-lucide="inbox" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                        <div class="text-xs font-semibold text-slate-600">No saved runs yet</div>
+                        <div class="text-[10px] text-slate-400 mt-1 leading-relaxed">Solve once, wait for real-road refinement,<br>then click <i data-lucide="save" class="inline w-2.5 h-2.5"></i> to save.</div>
+                    </div>`;
+                if (window.lucide) window.lucide.createIcons();
                 return;
             }
 
-            container.innerHTML = runs.map(run => `
-                <div class="route-item" style="border-left: 3px solid #10b981; background: #fff;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
-                        <div style="font-weight:600; color:#334155; font-size:0.85rem;">${run.name}</div>
-                        <div style="font-size:0.7rem; color:#94a3b8;">${new Date(run.timestamp).toLocaleDateString()}</div>
-                    </div>
-                    <div style="font-size:0.75rem; color:#64748b; margin-bottom:8px;">
-                        ${run.summary}
-                    </div>
-                    <div style="display:flex; gap:8px;">
-                        <button onclick="loadRun(${run.id})" class="btn-primary" 
-                            style="padding:4px 8px; font-size:0.75rem; background:#10b981; width:auto;">
-                            Load
+            container.innerHTML = runs.map(run => {
+                const m = _parseRunSummary(run.summary);
+                const chips = m ? `
+                    <span class="inline-flex items-center gap-1.5 px-2 h-6 bg-blue-50 text-blue-700 rounded text-xs font-mono font-bold" title="${m.buses} buses">
+                        <i data-lucide="bus" class="w-3 h-3"></i>${m.buses}
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 px-2 h-6 bg-emerald-50 text-emerald-700 rounded text-xs font-mono font-bold" title="${m.students} students">
+                        <i data-lucide="users" class="w-3 h-3"></i>${m.students}
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 px-2 h-6 bg-slate-100 text-slate-700 rounded text-xs font-mono font-bold" title="${m.km} km total">
+                        <i data-lucide="route" class="w-3 h-3"></i>${m.km}km
+                    </span>` : `
+                    <span class="text-xs text-slate-500">${run.summary || ''}</span>`;
+
+                // Render the parameters this run was solved with so the user
+                // can compare scenarios at a glance without loading each one.
+                const ip = run.input_params || {};
+                const hasParams = ip.max_ride_time || ip.service_time || ip.safety_factor || ip.school_time;
+                const paramsBlock = hasParams ? `
+                    <div class="border-t border-slate-100 pt-2 mb-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs font-mono">
+                        ${ip.max_ride_time ? `<div class="flex items-center gap-1.5 text-slate-500"><i data-lucide="timer" class="w-3.5 h-3.5 text-amber-500"></i><span class="text-slate-800 font-bold">${ip.max_ride_time}m</span> ride</div>` : ''}
+                        ${ip.service_time ? `<div class="flex items-center gap-1.5 text-slate-500"><i data-lucide="hourglass" class="w-3.5 h-3.5 text-blue-500"></i><span class="text-slate-800 font-bold">${ip.service_time}s</span>/pax</div>` : ''}
+                        ${ip.safety_factor ? `<div class="flex items-center gap-1.5 text-slate-500"><i data-lucide="shield" class="w-3.5 h-3.5 text-emerald-500"></i><span class="text-slate-800 font-bold">${Number(ip.safety_factor).toFixed(2)}</span> safety</div>` : ''}
+                        ${ip.school_time ? `<div class="flex items-center gap-1.5 text-slate-500"><i data-lucide="school" class="w-3.5 h-3.5 text-violet-500"></i><span class="text-slate-800 font-bold">${ip.school_time}</span> arr</div>` : ''}
+                    </div>` : '';
+
+                return `
+                <div class="group bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm rounded-lg p-3 transition-all">
+                    <div class="flex items-start justify-between gap-2 mb-2.5">
+                        <div class="min-w-0 flex-1">
+                            <div class="text-sm font-bold text-slate-900 truncate" title="${run.name}">${run.name}</div>
+                            <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                                <i data-lucide="clock" class="w-3 h-3"></i>${_runTimeAgo(run.timestamp)}
+                            </div>
+                        </div>
+                        <button onclick="deleteRun(${run.id})" class="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all shrink-0" title="Delete run">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>
-                        <button onclick="deleteRun(${run.id})" 
-                            style="padding:4px 8px; font-size:0.75rem; border:1px solid #ef4444; color:#ef4444; background:white; border-radius:4px; cursor:pointer;">
-                            Delete
-                        </button>
                     </div>
-                </div>
-            `).join('');
+                    <div class="flex items-center gap-1.5 mb-2.5 flex-wrap">
+                        ${chips}
+                    </div>
+                    ${paramsBlock}
+                    <button onclick="loadRun(${run.id})" class="w-full h-9 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-all">
+                        <i data-lucide="folder-open" class="w-4 h-4"></i> Load
+                    </button>
+                </div>`;
+            }).join('');
+
+            if (window.lucide) window.lucide.createIcons();
 
         } catch (e) {
             console.error(e);
-            container.innerHTML = '<div style="color: #ef4444; text-align: center;">Error loading runs</div>';
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-6 px-4 text-center">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-500 mb-1.5"></i>
+                    <div class="text-xs font-semibold text-rose-600">Failed to load runs</div>
+                    <button onclick="loadSavedRuns()" class="mt-2 text-[10px] text-slate-500 hover:text-slate-800 underline">Retry</button>
+                </div>`;
+            if (window.lucide) window.lucide.createIcons();
         }
     }
 
@@ -3384,8 +4181,41 @@
                     }
                 }
 
+                // Restore the input parameters that produced this run so the
+                // sidebar inputs, the solver-params banner, AI Refine, and
+                // any subsequent re-solve all match the loaded run instead
+                // of whatever the user typed since.
+                if (data.input_params) {
+                    const ip = data.input_params;
+                    const setVal = (id, val) => {
+                        if (val == null) return;
+                        const el = document.getElementById(id);
+                        if (el) el.value = val;
+                    };
+                    setVal('schoolTime', ip.school_time);
+                    setVal('maxRideTime', ip.max_ride_time);
+                    setVal('serviceTime', ip.service_time);
+                    setVal('safetyFactor', ip.safety_factor);
+
+                    const solverParamsDisplay = document.getElementById('solverParamsDisplay');
+                    if (solverParamsDisplay) {
+                        const st = ip.service_time || 60;
+                        const mr = ip.max_ride_time || 60;
+                        const sf = Number(ip.safety_factor || 0.85).toFixed(2);
+                        solverParamsDisplay.innerHTML =
+                            `<i class="fas fa-cog"></i> Loaded run: <b>${st}s</b>/pax, ` +
+                            `<b>${mr}min</b> limit, safety <b>${sf}</b>`;
+                    }
+                }
+
                 // Display new routes (This creates the DOM elements)
                 displayRoutes(data.result_json);
+
+                // Loaded runs already have Phase-2 polylines baked in (only
+                // post-Phase-2 saves are allowed), so the save button can be
+                // re-enabled immediately — no waiting for a refetch.
+                const saveBtn = document.getElementById('saveRunBtn');
+                if (saveBtn) saveBtn.disabled = false;
 
                 // Auto-switch to results
                 switchTab('results');
@@ -3668,6 +4498,7 @@
                     model: chatModel,
                     school_time: document.getElementById('schoolTime')?.value || '07:30',
                     max_ride_time: document.getElementById('maxRideTime')?.value || 60,
+                    service_time: document.getElementById('serviceTime')?.value || 60,
                     safety_factor: document.getElementById('safetyFactor')?.value || 0.85
                 })
             });

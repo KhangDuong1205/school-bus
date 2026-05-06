@@ -7,3 +7,4 @@ python-dotenv==1.0.0
 Flask-SQLAlchemy==3.1.1
 google-generativeai==0.8.3
 osmnx==2.1.0
+openpyxl==3.1.2
